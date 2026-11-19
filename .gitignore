@@ -1,0 +1,37 @@
+# Python (project-local uv setup made by the installer)
+.python/
+.uv-cache/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Extension build output (recreated by the installer or `npm run build*`)
+extension/dist/
+extension/artifacts/
+/chrome-extension/
+*.xpi
+
+# The ELN address chosen at installation (extension/local.config.json)
+extension/local.config.json
+
+# Registry data never belongs in the repository
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Secrets and local settings
+.env
+
+# Development aids that stay on the developer's PC
+.claude/
+.mcp.json
+.playwright-profile/
+.playwright-mcp/
+samples/
+/tools/

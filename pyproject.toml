@@ -1,0 +1,40 @@
+[project]
+name = "compound-registry"
+dynamic = ["version"]
+description = "Local compound ID registry (CORE_STEREO_BATCH) for the Sciformation ELN"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "rdkit==2026.9.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/smalljet-lab/compound-registry"
+Documentation = "https://github.com/smalljet-lab/compound-registry#readme"
+Changelog = "https://github.com/smalljet-lab/compound-registry/blob/main/CHANGELOG.md"
+Issues = "https://github.com/smalljet-lab/compound-registry/issues"
+
+[project.scripts]
+compound-registry = "compound_registry.cli:main"
+compound-registry-host = "compound_registry.host:main"
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/compound_registry/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/compound_registry"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

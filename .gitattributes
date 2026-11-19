@@ -1,0 +1,13 @@
+# One line-ending policy for every checkout: LF in the repository and on disk,
+# except the Windows scripts, which must be CRLF to run from a double click.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sh text eol=lf
+*.png binary
+*.xpi binary
+*.zip binary
+*.sqlite binary
+# Test molfiles are compared byte for byte.
+*.mol -text

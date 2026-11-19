@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Compound Registry add-on for MestReNova. Installed by: python -m compound_registry.mnova install -->
+<mestre_ui version="1.0" name="compoundRegistry" toolbarcontext="Compound Registry">
+	<actions>
+		<action name="compoundRegistryLink">
+			<text>Link Spectrum to Compound ID...</text>
+			<tooltip>Find the compound ID from the experiment number in the spectrum title and save the document under it</tooltip>
+			<icon>compound_registry</icon>
+		</action>
+		<action name="compoundRegistrySave">
+			<text>Save Report and PDF to Compound</text>
+			<tooltip>Save the document, a PDF and the multiplet report with the compound ID (asks for the compound first when the document is not linked yet)</tooltip>
+			<icon>compound_registry</icon>
+		</action>
+		<action name="compoundRegistryStructure">
+			<text>Paste Structure on Spectrum</text>
+			<tooltip>Put the structure of the linked compound on the current page (asks for the compound first when the document is not linked yet)</tooltip>
+			<icon>compound_registry</icon>
+		</action>
+		<action name="compoundRegistryLibrary">
+			<text>Compound Library...</text>
+			<tooltip>Search the compounds of the registry and open the NMR document saved for one of them, to compare it with your spectrum</tooltip>
+			<icon>compound_registry</icon>
+		</action>
+		<action name="compoundRegistryShow">
+			<text>Show Linked Compound ID</text>
+			<tooltip>Show the compound ID this document is linked to</tooltip>
+		</action>
+		<action name="compoundRegistryAuto">
+			<text>Propose Compound ID when a Spectrum is Opened</text>
+			<checkable>yes</checkable>
+		</action>
+	</actions>
+	<menus>
+		<menu name="Scripts">
+			<submenu name="Compound Registry">
+				<addaction name="compoundRegistrySave"/>
+				<addaction name="compoundRegistryLink"/>
+				<addaction name="compoundRegistryStructure"/>
+				<addaction name="compoundRegistryLibrary"/>
+				<addaction name="compoundRegistryShow"/>
+				<addseparator/>
+				<addaction name="compoundRegistryAuto"/>
+			</submenu>
+		</menu>
+	</menus>
+	<ribbon>
+		<page id="pageTools">
+			<group id="grpCompoundRegistry" name="Compound ID">
+				<icon>compound_registry</icon>
+				<addaction name="compoundRegistrySave"/>
+				<addaction name="compoundRegistryLink"/>
+				<addaction name="compoundRegistryStructure"/>
+				<addaction name="compoundRegistryLibrary"/>
+				<adddropdown name="compoundRegistryDropdown">
+					<text>Options</text>
+					<menu name="compoundRegistryDropdownMenu">
+						<addaction name="compoundRegistryShow"/>
+						<addaction name="compoundRegistryAuto"/>
+					</menu>
+				</adddropdown>
+			</group>
+		</page>
+	</ribbon>
+	<pixmaps>
+		<pixmap name="compound_registry" format="base64">
+		<![CDATA[
+iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABmJLR0QA/wD/AP+gvaeTAAACO0lE
+QVRYhe3WO2gVURAG4C8aRXwGEUEhISL4QAtBwcJAFGzUQgh24qMQhTRaBysfqbSxSC8BC0WbFIJY
+KZogARURH4WgQSNRolHiI4m5FucsG/XezW7uBZv8cDl7l/ln/jM7M+cwi/+Muhw2Z7Afbwr4bUIf
+TsxE1FTswBh+oVTwN4aj0wXIykAderEdt6PTVTlEf8drHMAANuBbDt4/OBKDDmIpHsm380+Yg/74
+/3RWkEoZWIwXWI3D6Ma2+H46jOMeWnBHyMhGxWpIp6C+N0NkHlyLfrqLkNYIqieF718NGjEafbXk
+JV0XVF+uMniCc9Ffv1AbmdgVjb8K378WWCh0RUko7IqYi8fRsKNGwRMcin7fCx1VFu3R6BUW1FhA
+He5G/53lDJrxORq01Th4gq3CRB1Da/IyKYqDWIYvGMFNLKpR4Dm4IXTXIOqFT/IHtgitV8LzuJ6t
+kYBj0d876blSNssd0hqYjIKaqwy+RNh1STrKuyoZz8fLaPQgrlerFHAh+nkW12GsyCK0SQ+U0fjc
+mkXIwFr8EFKezIGTeYi3ovH9uD4UZkRR9ER+nzQL8/IQNwkn2jjeRvLxgsF3SyfqSHzeU8RBVyQ9
+iesQGnJy66fwkt33FAkOy/HxLxEXc3JPRfsBTOAn1lcyrnQ6DUvnQINQSI3y3Q2ahDYeEWrnknC5
+KYssh/VCAW4WLhbncwRP0C7UzRDWRTEzwj5h9zO5FU/I0XZ5UnoFO/GhgPCVeIq9wvidxSwq4jcM
+yLqGpEnZ1QAAAIN6VFh0cmRraXRQS0wgcmRraXQgMjAyNi4wOS4yAAB4nHu/b+09BiAQAGIWBghg
+g+IGRjaHDCDNzEwag5uBMYGRKYOJiTmBmSWDiYU1gZUhg8mJEWwsIxMzC6t4EJDNyICw74A9kFaF
+cB3sH7ots4ey9yPYB/Y/fbJSFUl8P5J6MFsMADYSHOOSd4CwAAAAyHpUWHRNT0wgcmRraXQgMjAy
+Ni4wOS4yAAB4nI2RXQ6CMAzH33eK/wUgZRvoHhkjxhhGougdfOf+sdXMgTGEdk3a5bd+TUHkGi7P
+GV/RQSmANo5zDg9DRGqAOPD96RzRTa1PN914j9MNDSuJrsl2God0U6FDVdYkAirp10mcZo7Kwxvk
+B9o5Msc/nGGu2ANaAfdUrlcZi42UzbLHLbCPYbWEz1r8GENei2XTeXrLZvKQViyPIlrnhjlAk7uy
+bNWy9rKSxOnr2Fcvbh9kPv4bIXoAAABKelRYdFNNSUxFUyByZGtpdCAyMDI2LjA5LjIAAHicSzZM
+BgFDhRoNXQM9c1MdQz0jS0sDEx1rVJ6hnqmOAVRQFy6qi86HKNOsAQBZMRKCnRYiTwAAAABJRU5E
+rkJggg==
+		]]>
+		</pixmap>
+	</pixmaps>
+</mestre_ui>

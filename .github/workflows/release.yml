@@ -1,0 +1,44 @@
+# Pushing a tag vX.Y.Z builds both extension packages (for the default ELN
+# address) and attaches them to a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: The tag must be the version in the sources
+        run: |
+          version=$(node -p "require('./extension/package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version (run scripts/set-version.py first)."
+            exit 1
+          fi
+          grep -q "__version__ = \"$version\"" src/compound_registry/__init__.py
+      - run: npm ci
+        working-directory: extension
+      - run: npm test
+        working-directory: extension
+      - run: npm run package
+        working-directory: extension
+      - run: npm run package:chrome
+        working-directory: extension
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          extension/artifacts/*.xpi extension/artifacts/*.zip
+          --title "$GITHUB_REF_NAME" --generate-notes

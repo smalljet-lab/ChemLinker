@@ -1,0 +1,5 @@
+{
+ "_about": "Public key that fixes the Chrome extension ID (manifest \"key\"). Chrome derives the ID from it; the native host only serves chrome-extension://imkbdobpgmdgbpfeencchphiegjledoj/. No private key is kept: the extension is loaded unpacked, never packed as a .crx.",
+ "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx1Z4M8ttx8KGzQA1aTo//kMw326VRuEnJwWT/l+tVy4dF5pklIbX2PFfWhk6HRTNfpDIir466cOfL3EvwB1AhJoZHiKY4aFekcgL5+30kjvTqLOzds0bL7e6T9cToCPlLxUxQJ/K06ruYmSI3H6FU5q1oNdejQPU8wA3fkcBq89g8HXvHPon89PK1sBDSS4T0psekMIMVSu5R6wsFolRPbCi2TffVuWAyVk7VdEMnuZLXzin80ENWw9abvZlWspeQtyUJoOR0ipj0OgfEgVucLnDPfDWmTruMQTJYTUXCEG8P4o0s7z99wbhyNnnHdOWFjS4uv/mgZ55TIgCzj4LKQIDAQAB",
+ "id": "imkbdobpgmdgbpfeencchphiegjledoj"
+}
