@@ -21,7 +21,7 @@
 #   --browser NAME       firefox, chrome or both
 #   --eln-origin URL     address of the ELN, e.g. https://eln.example.org
 #   --create-registry    create a NEW, EMPTY registry in the data folder without asking
-#   --id-prefix TEXT     letters in front of every ID of a NEW registry (permanent)
+#   --id-prefix ABC      the first three letters (A-Z) of every ID of a NEW registry (permanent)
 #   --id-format TEMPLATE full ID template of a NEW registry (permanent)
 #   --mnova yes|no       the MestReNova add-on (Windows only)
 #   --skip-extension     do not build the extension

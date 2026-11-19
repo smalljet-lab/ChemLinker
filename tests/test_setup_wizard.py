@@ -254,10 +254,12 @@ def test_normalise_folder(tmp_path, monkeypatch):
 
 
 def test_id_format_for_prefix():
-    assert id_format_for_prefix("") == "{core:06d}_{stereo:02d}_{batch:03d}"
     assert id_format_for_prefix(" ABC ") == "ABC{core:06d}_{stereo:02d}_{batch:03d}"
-    with pytest.raises(RegistryError):
-        id_format_for_prefix("A{B}")
+    assert id_format_for_prefix("lem") == "LEM{core:06d}_{stereo:02d}_{batch:03d}"
+    for wrong in ("", "AB", "ABCD", "A{B}", "A/B", "AB1", "A B", "ÄBC", "LAB-"):
+        with pytest.raises(RegistryError) as info:
+            id_format_for_prefix(wrong)
+        assert info.value.code == "invalid_argument" and "three capital" in info.value.message
 
 
 @pytest.mark.parametrize("text, ok", [
@@ -380,7 +382,8 @@ def test_first_installation_with_questions(tmp_path, target, registry, root):
     assert run.script.prompts[0] == f"Data folder [{home}]: "
     assert "registry database, its backups and the compound files" in run.text
     assert "A NEW, EMPTY registry will be created there: its numbering starts at 1." in run.text
-    assert "The format can NEVER be changed" in run.text
+    assert "The letters can NEVER be changed" in run.text
+    assert run.script.asked("First three letters of the compound IDs")
     assert run.script.asked("IDs will look like ABC000001_01_001. Use this format?")
     assert run.script.prompts[4] == "Browser - firefox, chrome or both [both]: "
     assert run.script.prompts[5] == f"ELN address [{DEFAULT_ELN_ORIGIN}]: "
@@ -434,15 +437,15 @@ def test_declining_the_creation_asks_for_the_folder_again(tmp_path, target, root
 
 def test_folder_and_prefix_are_asked_again_until_usable(tmp_path, target, root):
     home = tmp_path / "data"
-    run = Run(target, root, "relative/folder", str(home), "y", "A/B", "LAB-", "n", "", "", "", "",
-              "")
+    run = Run(target, root, "relative/folder", str(home), "y", "A/B", "", "abcd",
+              "lem", "n", "XYZ", "", "", "", "")
     assert run() == 0
     assert "must be an absolute path" in run.text
-    assert "cannot be used for a new registry" in run.text           # A/B
-    assert run.script.asked("IDs will look like LAB-000001_01_001")  # declined, then no prefix
-    assert run.script.asked("IDs will look like 000001_01_001")
+    assert run.text.count("exactly three capital letters") == 3      # A/B, empty, abcd
+    assert run.script.asked("IDs will look like LEM000001_01_001")   # small letters; declined
+    assert run.script.asked("IDs will look like XYZ000001_01_001")
     location = install_host.locate_registry(home)
-    assert location.exists and location.config.id_format == "{core:06d}_{stereo:02d}_{batch:03d}"
+    assert location.exists and location.config.id_format == "XYZ{core:06d}_{stereo:02d}_{batch:03d}"
 
 
 def test_sync_folder_warning_is_shown_and_must_be_confirmed(tmp_path, target, root, monkeypatch):
@@ -456,7 +459,7 @@ def test_sync_folder_warning_is_shown_and_must_be_confirmed(tmp_path, target, ro
     assert not (cloud / "reg").exists() and pinned(target) == str(local)
 
     #                  folder             anyway create prefix ok switch browser ELN continue
-    again = Run(target, root, str(cloud / "reg"), "y", "y", "", "", "y", "", "", "")
+    again = Run(target, root, str(cloud / "reg"), "y", "y", "ABC", "", "y", "", "", "")
     assert again() == 0
     assert pinned(target) == str(cloud / "reg") and (cloud / "reg" / "config.toml").is_file()
     assert again.text.count("is inside OneDrive") == 1              # not repeated after creation
@@ -524,11 +527,11 @@ def test_yes_never_creates_a_registry_by_itself(tmp_path, target, registry, root
 def test_yes_with_the_options_of_a_first_installation(tmp_path, target, registry, root):
     home = tmp_path / "data"
     run = Run(target, root)
-    assert run(yes=True, home=str(home), create_registry=True, id_prefix="XY",
+    assert run(yes=True, home=str(home), create_registry=True, id_prefix="XYZ",
                browser="chrome", eln_origin="https://eln.example.org:8443/") == 0
     assert run.script.prompts == []
     assert install_host.locate_registry(home).config.id_format == \
-        "XY{core:06d}_{stereo:02d}_{batch:03d}"
+        "XYZ{core:06d}_{stereo:02d}_{batch:03d}"
     assert registry.values == {CHROME_REGISTRY_KEY: str(target.chrome_manifest_path)}
     assert run.npm.npm == [["ci"], ["run", "package:chrome", "--", "--force", "--eln-origin",
                                     "https://eln.example.org:8443"]]
@@ -554,8 +557,10 @@ def test_yes_with_an_id_format_option(tmp_path, target, root):
 
 
 @pytest.mark.parametrize("options, part", [
-    ({"id_prefix": "AB", "id_format": "{core:06d}_{stereo:02d}_{batch:03d}"}, "not both"),
-    ({"id_prefix": "A/B"}, "cannot be used for a new registry"),
+    ({"id_prefix": "ABC", "id_format": "{core:06d}_{stereo:02d}_{batch:03d}"}, "not both"),
+    ({"id_prefix": "A/B"}, "three capital letters"),
+    ({"id_prefix": "AB"}, "three capital letters"),
+    ({"id_prefix": ""}, "three capital letters"),
     ({"id_format": "{core}"}, ""),
     ({"browser": "edge"}, "Unknown browser"),
     ({"eln_origin": "http://eln.example.org"}, "https://"),
@@ -583,7 +588,7 @@ def test_a_file_cannot_be_the_data_folder(tmp_path, target, registry, root):
     assert snapshot(tmp_path, registry) == before
     # typed at the question: said, and asked again
     data = tmp_path / "data"
-    run = Run(target, root, str(tmp_path / "afile"), str(data), "y", "", "", "", "", "")
+    run = Run(target, root, str(tmp_path / "afile"), str(data), "y", "ABC", "", "", "", "")
     assert run() == 0
     assert "is a file, not a folder" in run.text and pinned(target) == str(data)
 
@@ -643,7 +648,7 @@ def test_an_id_format_is_refused_for_an_existing_registry(tmp_path, target, regi
     home = create_registry(tmp_path / "data")
     before = dict(registry.values)
     with pytest.raises(RegistryError) as info:
-        Run(target, root)(yes=True, home=str(home), id_prefix="AB")
+        Run(target, root)(yes=True, home=str(home), id_prefix="ABC")
     assert info.value.code == "invalid_argument" and "cannot be changed" in info.value.message
     assert registry.values == before and not target.sidecar_path.exists()
 
@@ -739,7 +744,7 @@ def test_dry_run_changes_nothing(tmp_path, target, registry, root):
     before = snapshot(tmp_path, registry)
     run = Run(target, root, mnova=Mnova(found=True))
     assert run(dry_run=True, yes=True, home=str(tmp_path / "data"), create_registry=True,
-               id_prefix="AB", mnova="yes", eln_origin="https://eln.example.org") == 0
+               id_prefix="ABC", mnova="yes", eln_origin="https://eln.example.org") == 0
     assert snapshot(tmp_path, registry) == before
     assert run.npm.calls == [] and run.mnova.installs == 0
     text = run.text
@@ -1052,7 +1057,7 @@ def test_input_that_ends_or_a_no_at_the_end_changes_nothing(tmp_path, target, re
         ended()
     assert info.value.code == "cancelled" and snapshot(tmp_path, registry) == before
 
-    stopped = Run(target, root, "", "y", "", "", "", "", "n")
+    stopped = Run(target, root, "", "y", "ABC", "", "", "", "n")
     with pytest.raises(RegistryError) as info:
         stopped()
     assert info.value.code == "cancelled" and "before anything was changed" in info.value.message
@@ -1116,7 +1121,7 @@ def test_command_dry_run(command, tmp_path, target, registry, monkeypatch):
     monkeypatch.setattr(cli, "_stdin_is_terminal", lambda: False)
     before = snapshot(tmp_path, registry)
     code, out, err = command("setup", "--dry-run", "--yes", "--home", str(tmp_path / "data"),
-                             "--create-registry", "--id-prefix", "AB", "--browser", "both")
+                             "--create-registry", "--id-prefix", "ABC", "--browser", "both")
     assert code == 0, err
     out.encode("ascii")
     assert "Would create" in out and "Dry run: nothing was changed." in out

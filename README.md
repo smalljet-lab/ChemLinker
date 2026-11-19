@@ -76,9 +76,10 @@ Then the questions come in this order:
    - If no registry exists in the folder, the installer asks
      `Create a new, empty registry?`. Say yes only for a first installation.
      If you already have a registry somewhere else, give that folder instead.
-   - For a new registry it asks for an **ID prefix**: letters in front of
-     every ID, for example your initials (`ABC` gives `ABC000001_01_001`).
-     Empty means no prefix. The ID format can never be changed afterwards.
+   - For a new registry it asks for the **first three letters of the compound
+     IDs**: three capital letters from A to Z, for example your initials
+     (`PET` gives `PET000001_01_001`). Small letters are turned into capitals.
+     The letters can never be changed afterwards.
 2. **Browser.** `firefox`, `chrome` or `both`.
 3. **ELN address.** Press Enter for the default, or type the address of your
    own Sciformation.

@@ -264,10 +264,13 @@ def normalise_folder(text: str) -> str:
 
 
 def id_format_for_prefix(prefix: str) -> str:
-    """The ID template for IDs that start with ``prefix`` (may be empty)."""
-    text = (prefix or "").strip()
-    if "{" in text or "}" in text:
-        raise RegistryError("The prefix must not contain '{' or '}'.", code="invalid_argument")
+    """The ID template for IDs that start with ``prefix``: exactly three letters A-Z.
+    Small letters are turned into capitals."""
+    text = (prefix or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", text):
+        raise RegistryError("The first three letters of the IDs must be exactly three capital "
+                            f"letters from A to Z (for example PET or LEM), got {prefix!r}.",
+                            code="invalid_argument")
     return f"{text}{{core:06d}}_{{stereo:02d}}_{{batch:03d}}"
 
 
@@ -647,11 +650,11 @@ def _decide_creation(options: Options, env: Environment, plan: _Plan,
         return True
     if wanted_format is None and options.asks:
         say("")
-        say("ID format. Every ID is CORE_STEREO_BATCH, for example 000001_01_001. Letters can be")
-        say("put in front of every ID, for example your initials (ABC000001_01_001).")
-        say("The format can NEVER be changed once the registry exists.")
+        say("ID format. Every ID starts with three capital letters of your choice, for example")
+        say("your initials: PET gives PET000001_01_001 (compound 1, stereo variant 1, batch 1).")
+        say("The letters can NEVER be changed once the registry exists.")
         while True:
-            prefix = _ask(env, "ID prefix (letters; empty for none) []: ")
+            prefix = _ask(env, "First three letters of the compound IDs (A-Z, e.g. PET or LEM): ")
             try:
                 fmt = _checked_format(id_format_for_prefix(prefix))
             except RegistryError as exc:

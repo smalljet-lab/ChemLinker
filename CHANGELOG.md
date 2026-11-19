@@ -12,7 +12,7 @@ First public release.
 ### Added
 
 - **Permanent compound IDs.** Every compound gets an ID `CORE_STEREO_BATCH`,
-  with an optional prefix chosen when the registry is created (for example
+  starting with three capital letters chosen when the registry is created (for example
   `ABC000042_01_003`). Stereoisomers share the `CORE` number; salts, solvates
   and isotopically labelled compounds are compounds of their own. An ID is
   never reused; a wrong ID is retired, not deleted.

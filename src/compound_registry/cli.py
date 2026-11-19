@@ -1594,9 +1594,9 @@ def add_setup_parser(sub, common) -> None:
     p.add_argument("--create-registry", action="store_true",
                    help="create a NEW, EMPTY registry in the data folder without asking, if "
                         "none exists there (first installation only)")
-    p.add_argument("--id-prefix", metavar="TEXT",
-                   help="letters put in front of every ID of a NEW registry, e.g. ABC for "
-                        "ABC000001_01_001 (permanent)")
+    p.add_argument("--id-prefix", metavar="ABC",
+                   help="the first three letters of every ID of a NEW registry: three capital "
+                        "letters A-Z, e.g. PET for PET000001_01_001 (permanent)")
     p.add_argument("--id-format", metavar="TEMPLATE",
                    help="full ID template of a NEW registry instead of --id-prefix (see 'init "
                         "--id-format'; permanent)")
