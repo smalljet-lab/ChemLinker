@@ -21,7 +21,7 @@ same PC. The registry is one folder that you choose and back up.
 | What | Needed |
 | --- | --- |
 | Windows 10 or 11 | Fully supported. |
-| macOS, Linux | The registry, the extension and the command-line tool work. The ChemDraw and MestReNova integration are Windows only. |
+| macOS, Linux | Not supported yet. The registry, the extension and the command-line tool are written to work there, but this has not been tried and the automatic tests run on Windows only. The ChemDraw and MestReNova integration are Windows only. |
 | Browser | Firefox 140 or newer, or Chrome 120 or newer. Read [which Firefox](#3-load-the-extension-in-the-browser) before you start. |
 | ELN | Sciformation, served over https at the root of its host. The default address is `https://sciformation.chemie.unibas.ch`; any other address is a setting, see [Using another Sciformation address](#using-another-sciformation-address). |
 | uv | The Python package manager the project uses. The installer offers to install it. You do not need to install Python yourself. |

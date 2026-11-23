@@ -242,7 +242,7 @@ Program and extension carry one version number. `__version__` in
 What the workflows do:
 
 - `.github/workflows/ci.yml` runs on every push to `main` and on every pull
-  request. It runs the Python tests on Windows, Linux and macOS
+  request. It runs the Python tests on Windows (Linux and macOS are switched off for now, see the comment in the file)
   (`uv sync --locked`, `uv run pytest`). On Linux with Node.js 22 it runs
   `npm ci`, `npm run typecheck`, `npm test`, `npm run package` and
   `npm run package:chrome`.
