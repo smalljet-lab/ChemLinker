@@ -1,5 +1,5 @@
 #!/bin/sh
-# Brings an installed compound registry up to date (macOS / Linux, current user).
+# Brings an installed ChemLinker up to date (macOS / Linux, current user).
 #
 # Usage:  sh update.sh [--no-pull] [options of "compound-registry setup"]
 #
@@ -49,7 +49,7 @@ main() {
     done
 
     before=$(program_version)
-    echo "Compound registry: installed program version $before"
+    echo "ChemLinker: installed program version $before"
 
     if [ -n "$NO_PULL" ]; then
         echo "==> Not fetching anything (--no-pull): using the files in $ROOT"

@@ -251,7 +251,7 @@ What the workflows do:
   `__init__.py`. Then it runs `npm ci` and `npm test`, builds both packages
   for the default ELN address and creates a GitHub release named after the
   tag, with generated notes and the two files
-  `compound-registry-X.Y.Z-firefox.xpi` and `compound-registry-X.Y.Z-chrome.zip`
+  `chemlinker-X.Y.Z-firefox.xpi` and `chemlinker-X.Y.Z-chrome.zip`
   attached.
 
 The release workflow does not run the Python tests. Wait for CI to pass on

@@ -115,7 +115,7 @@ def test_install_host_human_output(run, target, registry, tmp_path):
     assert str(PROJECT_ROOT / "extension" / "dist" / "manifest.json") in out
     assert "xpinstall.signatures.required" in out and "Install Add-on From File" in out
     assert str(PROJECT_ROOT / "extension" / "artifacts"
-               / f"compound-registry-{__version__}-firefox.xpi") in out
+               / f"chemlinker-{__version__}-firefox.xpi") in out
     # which Firefox editions keep an unsigned file, and what ordinary Firefox does
     assert "Firefox ESR, Developer Edition and Nightly install it for good" in out
     assert "Ordinary Firefox (release, beta) refuses a file that Mozilla has not signed" in out

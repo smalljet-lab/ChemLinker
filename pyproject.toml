@@ -11,10 +11,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/smalljet-lab/compound-registry"
-Documentation = "https://github.com/smalljet-lab/compound-registry#readme"
-Changelog = "https://github.com/smalljet-lab/compound-registry/blob/main/CHANGELOG.md"
-Issues = "https://github.com/smalljet-lab/compound-registry/issues"
+Homepage = "https://github.com/smalljet-lab/ChemLinker"
+Documentation = "https://github.com/smalljet-lab/ChemLinker#readme"
+Changelog = "https://github.com/smalljet-lab/ChemLinker/blob/main/CHANGELOG.md"
+Issues = "https://github.com/smalljet-lab/ChemLinker/issues"
 
 [project.scripts]
 compound-registry = "compound_registry.cli:main"

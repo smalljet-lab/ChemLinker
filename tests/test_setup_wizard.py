@@ -302,7 +302,7 @@ def test_registry_summary_reads_without_changing_the_file(tmp_path):
 
 
 def test_next_steps_for_each_browser(root):
-    xpi = str(root / "extension" / "artifacts" / "compound-registry-9.8.7-firefox.xpi")
+    xpi = str(root / "extension" / "artifacts" / "chemlinker-9.8.7-firefox.xpi")
     firefox = "\n".join(next_steps(("firefox",), root=root))
     assert xpi in firefox and str(root / "extension" / "dist" / "manifest.json") in firefox
     assert "Firefox ESR, Developer Edition and Nightly install it for good" in firefox
@@ -338,16 +338,16 @@ def test_next_steps_variants(root):
 def test_next_steps_when_the_extension_is_not_there(root):
     """Nothing was built: the steps must not send the user to files that do
     not exist, and must say what to do with a downloaded package."""
-    xpi = root / "extension" / "artifacts" / "compound-registry-9.8.7-firefox.xpi"
+    xpi = root / "extension" / "artifacts" / "chemlinker-9.8.7-firefox.xpi"
     text = "\n".join(next_steps(("firefox", "chrome"), root=root, build_note="why",
                                 download=True))
     assert "  2. Firefox (after step 1): install the extension file" in text
-    assert ("     compound-registry-9.8.7-firefox.xpi that you downloaded, or, after a build,\n"
+    assert ("     chemlinker-9.8.7-firefox.xpi that you downloaded, or, after a build,\n"
             f"     {xpi}") in text
     assert "'Load Temporary Add-on...' and choose\n       the same file" in text
     assert str(root / "extension" / "dist") not in text
     assert "  3. Chrome (after step 1): open chrome://extensions" in text
-    assert ("With the downloaded compound-registry-9.8.7-chrome.zip: unpack it first, into a "
+    assert ("With the downloaded chemlinker-9.8.7-chrome.zip: unpack it first, into a "
             "folder that\n     stays, and choose that folder.") in text
 
     upgrade = "\n".join(next_steps(("chrome",), root=root, build_note="why", download=True,
@@ -360,14 +360,14 @@ def test_next_steps_when_the_extension_is_not_there(root):
 
     without_root = "\n".join(next_steps(("firefox", "chrome"), root=None, build_note="why",
                                         download=True))
-    assert f"compound-registry-{__version__}-firefox.xpi that you downloaded" in without_root
-    assert f"compound-registry-{__version__}-chrome.zip: unpack it first" in without_root
+    assert f"chemlinker-{__version__}-firefox.xpi that you downloaded" in without_root
+    assert f"chemlinker-{__version__}-chrome.zip: unpack it first" in without_root
     assert "extension/artifacts" not in without_root and "after a build" not in without_root
     commands = "\n".join(next_steps(("firefox",), root=root, build_commands=True))
     assert "npm ci" in commands and "npm run package" in commands
     assert "package:chrome" not in commands and str(root / "extension") in commands
     without_root = "\n".join(next_steps(("firefox", "chrome"), root=None, build_commands=True))
-    assert "extension/artifacts/compound-registry-<version>-firefox.xpi" in without_root
+    assert "extension/artifacts/chemlinker-<version>-firefox.xpi" in without_root
     assert "extension/dist/manifest.json" in without_root
 
 
@@ -406,7 +406,7 @@ def test_first_installation_with_questions(tmp_path, target, registry, root):
     assert all(cwd == root / "extension" for _argv, cwd in run.npm.calls)
     # one list of what is left, and the reminder
     assert run.text.count("What to do now:") == 1
-    assert str(root / "extension" / "artifacts" / "compound-registry-9.8.7-firefox.xpi") in run.text
+    assert str(root / "extension" / "artifacts" / "chemlinker-9.8.7-firefox.xpi") in run.text
     assert str(root / "chrome-extension") in run.text
     assert "update.ps1" in run.text and "update.sh" in run.text
     assert "Registry check" not in run.text               # a new registry has nothing to check
@@ -795,9 +795,9 @@ def test_without_nodejs_the_installation_still_succeeds(tmp_path, target, root):
     assert "Node.js was not found." in run.text
     assert "Install Node.js (the LTS version, https://nodejs.org), then run the installer" in run.text
     assert f"download the ready-made extension packages of version {__version__}" in run.text
-    assert "https://github.com/smalljet-lab/compound-registry/releases" in run.text
-    assert "compound-registry-9.8.7-firefox.xpi that you downloaded" in run.text
-    assert "With the downloaded compound-registry-9.8.7-chrome.zip: unpack it first" in run.text
+    assert "https://github.com/smalljet-lab/ChemLinker/releases" in run.text
+    assert "chemlinker-9.8.7-firefox.xpi that you downloaded" in run.text
+    assert "With the downloaded chemlinker-9.8.7-chrome.zip: unpack it first" in run.text
     assert str(root / "extension" / "dist") not in run.text
 
 
@@ -879,7 +879,7 @@ def test_without_a_project_folder_nothing_is_built(tmp_path, target):
     assert run() == 0
     assert run.npm.calls == [] and not run.script.asked("ELN address")
     assert "does not run from its project folder" in run.text
-    assert f"compound-registry-{__version__}-firefox.xpi that you downloaded" in run.text
+    assert f"chemlinker-{__version__}-firefox.xpi that you downloaded" in run.text
     assert "extension/artifacts" not in run.text
 
 

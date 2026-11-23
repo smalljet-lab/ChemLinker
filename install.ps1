@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs the compound registry for the current user (no administrator rights).
+    Installs ChemLinker for the current user (no administrator rights).
 
 .DESCRIPTION
     Double-click install.cmd, or run in a PowerShell window:

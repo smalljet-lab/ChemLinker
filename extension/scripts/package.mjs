@@ -1,8 +1,8 @@
 // Rebuilds the extension and zips it into artifacts/, with manifest.json at
 // the archive root:
 //
-//   npm run package          Firefox: dist/ -> compound-registry-<version>-firefox.xpi
-//   npm run package:chrome   Chrome:  ../chrome-extension/ -> compound-registry-<version>-chrome.zip
+//   npm run package          Firefox: dist/ -> chemlinker-<version>-firefox.xpi
+//   npm run package:chrome   Chrome:  ../chrome-extension/ -> chemlinker-<version>-chrome.zip
 //                            (unzip it and choose the folder in chrome://extensions > Load unpacked;
 //                            the "key" in its manifest keeps the extension ID the same)
 //
@@ -118,7 +118,7 @@ export async function packageExtension(options = {}) {
   const log = options.log ?? ((line) => console.log(line));
 
   const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
-  const out = join(artifacts, `compound-registry-${version}-${kind.suffix}`);
+  const out = join(artifacts, `chemlinker-${version}-${kind.suffix}`);
   if (!force && (await exists(out))) {
     throw new Error(`${out} already exists; bump the version, or pass --force to replace it`);
   }

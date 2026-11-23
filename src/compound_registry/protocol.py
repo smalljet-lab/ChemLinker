@@ -402,7 +402,11 @@ registry (``RegistryService.record_spectra``).
              "updated_at", "experiment_code", "title", "comment", "sample",
              "nucleus", "solvent", "experiment", "pulse_sequence",
              "frequency_mhz", "dimensions", "report", "parameters",
-             "mnova_file", "pdf_file", "pdf_available"}``. Text fields are
+             "mnova_file", "pdf_file", "pdf_available", "crude"}``. ``crude``
+             is true for a spectrum saved with the add-on's "Crude" box: of
+             such a spectrum only ``mnova_file`` is sent (every other detail
+             is null or empty, ``pdf_available`` false) and the page shows
+             just that path. Text fields are
              text or null; ``frequency_mhz`` a number or null; ``dimensions``
              a whole number or null; ``report`` the multiplet report as ONE
              LINE OF PLAIN TEXT or null (the HTML report is never sent);

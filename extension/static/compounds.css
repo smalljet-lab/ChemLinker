@@ -165,7 +165,8 @@ table.yields-table[aria-busy="true"] { opacity: 0.6; }
 .files-section { margin-top: 10px; padding: 6px 10px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfd; }
 .files-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
 .files-head h5 { margin: 0; }
-h6.other-files-head { margin: 10px 0 2px; font-size: 13px; color: #3d444d; }
+h6.other-files-head, h6.crude-head { margin: 10px 0 2px; font-size: 13px; color: #3d444d; }
+ul.crude-spectra li { overflow-wrap: anywhere; }
 .folder-line { overflow-wrap: anywhere; }
 ul.spectra { list-style: none; margin: 6px 0 0; padding: 0; }
 li.spectrum { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: #ffffff; min-width: 0; }

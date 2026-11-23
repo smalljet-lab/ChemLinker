@@ -66,7 +66,7 @@ _NODE_NEEDS = "20.19 or newer (of the 20 series), or 22.12 or newer"
 _UPDATE_HINT = ("To update later: get the new version of the project folder, then run "
                 "update.ps1 (Windows: double-click update.cmd) or 'sh update.sh' "
                 "(macOS/Linux).")
-_RELEASES = "https://github.com/smalljet-lab/compound-registry/releases"
+_RELEASES = "https://github.com/smalljet-lab/ChemLinker/releases"
 
 Run = Callable[[Sequence[str], Path], "tuple[int, str]"]
 
@@ -330,10 +330,10 @@ def extension_paths(root: Path) -> dict[str, Path]:
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return {
-        "firefox_package": ext / "artifacts" / f"compound-registry-{version}-firefox.xpi",
+        "firefox_package": ext / "artifacts" / f"chemlinker-{version}-firefox.xpi",
         "firefox_folder": ext / "dist",
         "chrome_folder": root / "chrome-extension",
-        "chrome_package": ext / "artifacts" / f"compound-registry-{version}-chrome.zip",
+        "chrome_package": ext / "artifacts" / f"chemlinker-{version}-chrome.zip",
     }
 
 
@@ -357,7 +357,7 @@ def next_steps(browsers: Sequence[str], *, root: Path | None, build_note: str | 
 
     def package_name(key: str, suffix: str) -> str:
         return (paths[key].name if paths is not None
-                else f"compound-registry-{__version__}-{suffix}")
+                else f"chemlinker-{__version__}-{suffix}")
 
     lines: list[str] = []
     number = 0
@@ -385,7 +385,7 @@ def next_steps(browsers: Sequence[str], *, root: Path | None, build_note: str | 
             more("  npm run package:chrome")
     if "firefox" in browsers:
         package = place("firefox_package",
-                        "extension/artifacts/compound-registry-<version>-firefox.xpi")
+                        "extension/artifacts/chemlinker-<version>-firefox.xpi")
         manifest = (str(paths["firefox_folder"] / "manifest.json") if paths is not None
                     else "extension/dist/manifest.json")
         step(f"Firefox{after}: {'install the new' if upgrade else 'install the'} extension file")
@@ -406,7 +406,7 @@ def next_steps(browsers: Sequence[str], *, root: Path | None, build_note: str | 
         folder = place("chrome_folder", "chrome-extension")
         if upgrade:
             step(f"Chrome{after}: open chrome://extensions and click the reload arrow of "
-                 "'Compound Registry'.")
+                 "'ChemLinker'.")
             more("If it is not loaded yet: switch on 'Developer mode', click 'Load unpacked' and")
             more(f"choose the folder {folder}")
         else:
@@ -964,7 +964,7 @@ def run_setup(options: Options, env: Environment) -> int:
             "try again.", code="host_launcher_missing")
     now = install_host.configured(target=target)
 
-    say(f"Compound registry {__version__} - "
+    say(f"ChemLinker {__version__} - "
         + ("update" if options.upgrade else "installation")
         + (" (dry run: nothing is changed)" if options.dry_run else ""))
     plan = _choose_folder(options, env, now, wanted_format)

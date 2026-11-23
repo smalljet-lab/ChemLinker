@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Compound Registry add-on for MestReNova. Installed by: python -m compound_registry.mnova install -->
-<mestre_ui version="1.0" name="compoundRegistry" toolbarcontext="Compound Registry">
+<!-- ChemLinker add-on for MestReNova. Installed by: python -m compound_registry.mnova install -->
+<mestre_ui version="1.0" name="compoundRegistry" toolbarcontext="ChemLinker">
 	<actions>
 		<action name="compoundRegistryLink">
 			<text>Link Spectrum to Compound ID...</text>
@@ -33,7 +33,7 @@
 	</actions>
 	<menus>
 		<menu name="Scripts">
-			<submenu name="Compound Registry">
+			<submenu name="ChemLinker">
 				<addaction name="compoundRegistrySave"/>
 				<addaction name="compoundRegistryLink"/>
 				<addaction name="compoundRegistryStructure"/>

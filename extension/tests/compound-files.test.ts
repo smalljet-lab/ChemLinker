@@ -130,10 +130,17 @@ describe("validators: compound_files", () => {
     ["pdf_file blank", { pdf_file: "" }],
     ["mnova_file a number", { mnova_file: 3 }],
     ["updated_at missing", { updated_at: undefined }],
+    ["crude as text", { crude: "yes" }],
   ];
   it.each(badSpectra)("rejects a spectrum with %s", (_name, over) => {
     expect(isSpectrumInfo({ ...spectrum(), ...over })).toBe(false);
     expect(isCompoundFilesResult(filesResult({ spectra: [{ ...spectrum(), ...over } as SpectrumInfo] }))).toBe(false);
+  });
+
+  it("accepts a spectrum with or without the crude mark (a host before 0.11 sends none)", () => {
+    expect(isSpectrumInfo(spectrum())).toBe(true);
+    expect(isSpectrumInfo(spectrum({ crude: false }))).toBe(true);
+    expect(isSpectrumInfo(spectrum({ crude: true, mnova_file: "C:\\r\\a_crude.mnova" }))).toBe(true);
   });
 
   it("the runtime client turns a malformed answer into host_bad_response", async () => {

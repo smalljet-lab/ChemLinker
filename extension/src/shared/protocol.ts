@@ -756,6 +756,11 @@ export interface SpectrumInfo {
   pdf_file: string | null;
   /** True when `pdf_file` can be read with `read_pdf` right now. */
   pdf_available: boolean;
+  /**
+   * True for a spectrum saved with the add-on's "Crude" box: only `mnova_file`
+   * is sent and shown (no details, no PDF). Missing from a host older than 0.11.
+   */
+  crude?: boolean;
 }
 
 /** One file lying directly in a compound's folder. */

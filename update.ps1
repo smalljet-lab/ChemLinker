@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Brings an installed compound registry up to date (current user, no administrator rights).
+    Brings an installed ChemLinker up to date (current user, no administrator rights).
 
 .DESCRIPTION
     Double-click update.cmd, or run in a PowerShell window:
@@ -77,7 +77,7 @@ foreach ($argument in @($SetupArguments | ForEach-Object { Split-GluedArgument $
 $DryRun = $Rest -contains "--dry-run"
 
 $Before = Get-ProgramVersion
-Write-Host "Compound registry: installed program version $Before"
+Write-Host "ChemLinker: installed program version $Before"
 
 if ($NoPull) {
     Write-Host "==> Not fetching anything (-NoPull): using the files in $Root"

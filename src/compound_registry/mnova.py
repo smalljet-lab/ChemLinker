@@ -742,10 +742,10 @@ def status(*, scripts_dir: str | Path | None = None,
             exists = False
         if not exists:
             problems.append(f"The installed add-on starts {python}, which is not there any more "
-                            "(the folder of the compound registry program was moved or removed).")
+                            "(the folder of the ChemLinker program was moved or removed).")
     if version != __version__:
         problems.append(
-            f"The installed add-on is {_version_words(version)}, the compound registry "
+            f"The installed add-on is {_version_words(version)}, the ChemLinker "
             f"program is version {__version__}.")
     same = python is not None
     for name in ADDON_FILES:
@@ -779,7 +779,7 @@ def _install_command() -> str:
 
 
 def _update_hint() -> str:
-    return ("Update the add-on: run the installer of the compound registry again "
+    return ("Update the add-on: run the installer of ChemLinker again "
             f"(compound-registry setup), or run\n{_install_command()}\n"
             "Then restart MestReNova.")
 
@@ -792,7 +792,7 @@ def check_addon_version(addon_version: str | None) -> None:
     if sent == __version__:
         return
     raise RegistryError(
-        f"The MestReNova add-on is {_version_words(sent or None)}, the compound registry "
+        f"The MestReNova add-on is {_version_words(sent or None)}, the ChemLinker "
         f"program is version {__version__}.\n{_update_hint()}", code="addon_outdated")
 
 
@@ -885,7 +885,7 @@ def _setup_lines(command: str, result: dict[str, Any]) -> list[str]:
     if result["current"]:
         return lines + ["             up to date"]
     return lines + [f"             {problem}" for problem in result["problems"]] + [
-        "             to bring it up to date, run the installer of the compound registry again",
+        "             to bring it up to date, run the installer of ChemLinker again",
         "             (compound-registry setup), or run",
         f"             {_install_command()}"]
 

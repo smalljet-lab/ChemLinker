@@ -1,6 +1,6 @@
 {
   "name": "compound-registry-extension",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Browser extension (Firefox and Chrome): local compound ID registry panel for the Sciformation ELN",
   "license": "MIT",

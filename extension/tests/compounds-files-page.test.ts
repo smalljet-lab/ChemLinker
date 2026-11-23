@@ -235,7 +235,7 @@ describe("spectra and files: content", () => {
     const ctx = mount();
     const s = await shown(ctx, filesResult({ warnings: ["The folder could not be listed."] }));
     expect(s.querySelector(".files-empty")!.textContent).toBe(
-      "No spectra are recorded for this compound yet. Spectra saved from MestReNova with the Compound Registry add-on appear here.",
+      "No spectra are recorded for this compound yet. Spectra saved from MestReNova with the ChemLinker add-on appear here.",
     );
     expect(s.querySelector(".banner.warn[role=note]")!.textContent).toContain("The folder could not be listed.");
     expect(s.querySelector(".folder-missing")).toBeNull();
@@ -293,6 +293,57 @@ describe("spectra and files: content", () => {
     for (const cls of [".spectrum-sample", ".spectrum-comment", ".spectrum-method", ".spectrum-report", ".spectrum-params", ".spectrum-files", ".pdf-control", ".pdf-missing"]) {
       expect(block.querySelector(cls), cls).toBeNull();
     }
+  });
+
+  it("shows of a crude spectrum only the path of its document", async () => {
+    const ctx = mount();
+    const path = "C:\\Registry\\compounds\\000042_01\\000042_01_001_FC2_crude.mnova";
+    // even if a host sent details or a PDF with a crude spectrum, none of it is shown
+    const crude = (over: Partial<SpectrumInfo> = {}) => ({ ...FULL_SPECTRUM(), crude: true, mnova_file: path, ...over });
+    const s = await shown(
+      ctx,
+      filesResult({
+        spectra: [
+          crude(),
+          crude({ spectrum_key: "ABC-001 13C", nucleus: "13C" }), // the same document: listed once
+          crude({ spectrum_key: "no file", mnova_file: null }), // nothing to show
+        ],
+      }),
+    );
+    expect(s.querySelector("li.spectrum")).toBeNull();
+    expect(s.querySelector(".files-empty")).toBeNull();
+    expect(s.querySelector(".crude-head")!.textContent).toBe("Crude spectrum");
+    const items = Array.from(s.querySelectorAll<HTMLElement>("li.crude-spectrum"));
+    expect(items).toHaveLength(1);
+    expect(items[0]!.querySelector(".crude-of")!.textContent).toBe("000042_01_001 · ABC-001");
+    expect(items[0]!.querySelector(".crude-path")!.textContent).toBe(path);
+    expect(items[0]!.querySelector("a")).toBeNull();
+    for (const cls of [".pdf-show", ".pdf-missing", ".spectrum-report", ".spectrum-params", ".report-text"]) {
+      expect(s.querySelector(cls), cls).toBeNull();
+    }
+    expect(s.textContent).not.toContain("7.26");
+    expect(s.textContent).not.toContain(".pdf");
+    button(items[0]!, "Copy").click();
+    await flush();
+    expect(ctx.copyText).toHaveBeenCalledWith(path);
+  });
+
+  it("shows full spectra with their details next to the crude ones", async () => {
+    const ctx = mount();
+    const s = await shown(
+      ctx,
+      filesResult({
+        spectra: [
+          FULL_SPECTRUM(),
+          spectrum({ spectrum_key: "c1", crude: true, mnova_file: "C:\\r\\a_crude.mnova" }),
+          spectrum({ spectrum_key: "c2", crude: true, mnova_file: "C:\\r\\b_crude.mnova" }),
+        ],
+      }),
+    );
+    expect(s.querySelectorAll("li.spectrum")).toHaveLength(1);
+    expect(s.querySelector(".crude-head")!.textContent).toBe("Crude spectra");
+    expect(Array.from(s.querySelectorAll(".crude-path")).map((p) => p.textContent)).toEqual(["C:\\r\\a_crude.mnova", "C:\\r\\b_crude.mnova"]);
+    expect(s.querySelectorAll(".pdf-show")).toHaveLength(1);
   });
 
   it("says where a PDF that is no longer available was", async () => {

@@ -52,6 +52,8 @@ import {
   FOLDER_MISSING_TEXT,
   folderFileLine,
   NO_SPECTRA_TEXT,
+  crudeDocuments,
+  fullSpectra,
   otherFiles,
   spectrumHeading,
   type FilesEntry,
@@ -1296,10 +1298,34 @@ export function mountCompoundsPage(deps: CompoundsPageDeps): CompoundsPageHandle
       );
       if (!result.folder.exists) out.push(el("p", { class: "small folder-missing", text: FOLDER_MISSING_TEXT }));
     }
-    if (result.spectra.length > 0) {
-      out.push(el("ul", { class: "spectra", attrs: { "aria-label": `Spectra of ${id}` } }, ...result.spectra.map((s) => spectrumBlock(id, s))));
-    } else {
+    const full = fullSpectra(result);
+    const crude = crudeDocuments(result);
+    if (full.length > 0) {
+      out.push(el("ul", { class: "spectra", attrs: { "aria-label": `Spectra of ${id}` } }, ...full.map((s) => spectrumBlock(id, s))));
+    } else if (crude.length === 0) {
       out.push(el("p", { class: "empty-note files-empty", text: NO_SPECTRA_TEXT }));
+    }
+    if (crude.length > 0) {
+      // Of a crude spectrum only where its document lies is shown: no details, no PDF.
+      out.push(
+        el("h6", { class: "crude-head", text: crude.length === 1 ? "Crude spectrum" : "Crude spectra" }),
+        el(
+          "ul",
+          { class: "list crude-spectra", attrs: { "aria-label": `Crude spectra of ${id}` } },
+          ...crude.map((c, index) => {
+            const code = c.experiment_code?.trim() ?? "";
+            return el(
+              "li",
+              { class: "crude-spectrum", attrs: { "data-full-id": c.full_id } },
+              el("span", { class: "small crude-of" }, el("span", { class: "mono", text: c.full_id }), code !== "" ? ` · ${code}` : null),
+              " ",
+              el("span", { class: "mono crude-path", text: c.path }),
+              " ",
+              copyButton(el, copyCtx, c.path, `the path of the crude spectrum of ${c.full_id}`, `copy-crude:${id}:${index}`),
+            );
+          }),
+        ),
+      );
     }
     const others = otherFiles(result);
     if (others.length > 0) {

@@ -530,9 +530,20 @@ def test_report_html_becomes_one_plain_line():
     assert "not_a_field" not in data and data["frequency_mhz"] == 500.133001
 
 
+def test_a_crude_spectrum_keeps_only_where_its_document_is():
+    from compound_registry.spectra import clean_spectrum
+
+    key, data = clean_spectrum(_spectrum(crude=True, report_kind="multiplets"))
+    assert key == "user.011.1.fid | 1H | 1D"
+    assert data["crude"] is True and data["mnova_file"] == "C:/nmr/a.mnova"
+    assert not {"report", "report_html", "report_kind", "pdf_file", "parameters"} & set(data)
+    assert "crude" not in clean_spectrum(_spectrum(crude=False))[1]
+    assert "crude" not in clean_spectrum(_spectrum())[1]
+
+
 @pytest.mark.parametrize("bad", [
     "text", {"title": ["a"]}, {"frequency_mhz": -1}, {"dimensions": 9}, {"parameters": []},
-    {"report_html": "x" * 60001}])
+    {"report_html": "x" * 60001}, {"crude": "yes"}, {"crude": 1}])
 def test_malformed_spectrum_is_refused(bad):
     from compound_registry.errors import RegistryError
     from compound_registry.spectra import clean_spectrum

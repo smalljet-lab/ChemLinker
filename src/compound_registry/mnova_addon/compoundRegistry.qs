@@ -1,5 +1,5 @@
 /******************************************************************************************************
-Compound Registry add-on for MestReNova.
+ChemLinker add-on for MestReNova.
 
 Links the NMR spectra of a document to a compound ID of the local compound registry and saves the
 document as <compound folder>/<ID>_<sample>.mnova. The compound folder is the one the registry made when
@@ -12,6 +12,10 @@ the shift report and the parameters of every spectrum of the document (1H, 13C, 
 compound in the registry. The shift report is the multiplet report; a spectrum without multiplets that is
 not 1H (typically 13C) gets the peak list report instead. Both are written by MestReNova's own reporters.
 
+A spectrum of a crude product is linked with the box "Crude spectrum" ticked in the dialog. Its document is
+saved as <ID>_<sample>_crude.mnova and only the place of that file is stored with the compound: no PDF, no
+shift report, no parameters. The catalogue shows just the path.
+
 "Paste Structure on Spectrum" puts the registered structure of the linked compound on the current page.
 
 "Compound Library..." lists the compounds of the registry (scrollable, with a search field) and opens the
@@ -22,7 +26,7 @@ looks for the number of an ELN experiment the registry knows (e.g. ABC-006) and 
 registered for that experiment. The chemist clicks the right structure. When the title does not name the
 experiment, the chemist types an experiment number or a compound ID in the search field of the same dialog.
 
-Installed and brought up to date by the installer of the compound registry (compound-registry setup) or by
+Installed and brought up to date by the installer of ChemLinker (compound-registry setup) or by
 	python -m compound_registry.mnova install
 which writes into the copy the Python to start, the program version and, when asked, a registry folder. Do
 not edit the installed copy. The add-on sends its version with every call; the registry program refuses an
@@ -74,6 +78,7 @@ compoundRegistry.dialogUi = function () {
 		'<item><layout class="QHBoxLayout" name="folderLayout">' +
 		'<item><widget class="QLabel" name="lblFolder"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Preferred"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>' +
 		'</layout></item>' +
+		'<item><widget class="QCheckBox" name="chkCrude"><property name="text"><string>Crude spectrum (only the document is saved and its path shown in the catalogue: no PDF, no report)</string></property></widget></item>' +
 		'<item><layout class="QHBoxLayout" name="bottomLayout">' +
 		'<item><widget class="QCheckBox" name="chkAuto"><property name="text"><string>Propose automatically when a spectrum is opened</string></property></widget></item>' +
 		'<item><spacer name="sp"><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>' +
@@ -131,7 +136,7 @@ compoundRegistry.compoundInfo = function (aCoreStereo) {
 	var answer = compoundRegistry.runBridge("folder", compoundRegistry.jsonAscii({core_stereo_id: String(aCoreStereo || "")}),
 		"Looking up the compound...");
 	if (!answer.ok || !answer.result || !answer.result.path) {
-		MessageBox.critical("Compound registry: the folder of " + aCoreStereo + " is not available.\n" +
+		MessageBox.critical("ChemLinker: the folder of " + aCoreStereo + " is not available.\n" +
 			(answer.error && answer.error.message ? answer.error.message : "unknown error"));
 		return null;
 	}
@@ -231,12 +236,12 @@ compoundRegistry.runBridge = function (aCommand, aInput, aBusyText) {
 	var dir = Dir.temp() + "/compound-registry-mnova", stamp = Application.createUuid().replace(/[\{\}]/g, ""),
 		textFile = dir + "/" + aCommand + "-" + stamp + ".txt", outFile = dir + "/answer-" + stamp + ".json",
 		args, proc, answer, parsed, timedOut = false, notStarted = false,
-		repair = "Run the installer of the compound registry again (compound-registry setup), then restart MestReNova.";
+		repair = "Run the installer of ChemLinker again (compound-registry setup), then restart MestReNova.";
 	if (compoundRegistry.python.indexOf("@@") === 0) {
-		return {ok: false, error: {message: "This copy of the add-on was not installed by the compound registry.\n" + repair}};
+		return {ok: false, error: {message: "This copy of the add-on was not installed by ChemLinker.\n" + repair}};
 	}
 	if (compoundRegistry.python.indexOf("/") !== -1 && !File.exists(compoundRegistry.python)) {
-		return {ok: false, error: {message: "The compound registry program is not where the add-on expects it:\n" + compoundRegistry.python +
+		return {ok: false, error: {message: "The ChemLinker program is not where the add-on expects it:\n" + compoundRegistry.python +
 			"\nIts folder was moved or removed.\n" + repair}};
 	}
 	new Dir(Dir.temp()).mkpath(dir);
@@ -281,21 +286,21 @@ compoundRegistry.runBridge = function (aCommand, aInput, aBusyText) {
 	try { File.remove(textFile); } catch (e3) {}
 	try { File.remove(outFile); } catch (e4) {}
 	if (notStarted) {
-		return {ok: false, error: {message: "The compound registry program could not be started:\n" + compoundRegistry.python +
-			"\nIf the compound registry was updated or moved: " + repair}};
+		return {ok: false, error: {message: "The ChemLinker program could not be started:\n" + compoundRegistry.python +
+			"\nIf ChemLinker was updated or moved: " + repair}};
 	}
 	if (timedOut) {
-		return {ok: false, error: {message: "The compound registry did not answer within 60 s (" + compoundRegistry.python + ")."}};
+		return {ok: false, error: {message: "ChemLinker did not answer within 60 s (" + compoundRegistry.python + ")."}};
 	}
 	if (!answer) {
-		return {ok: false, error: {message: "The compound registry program could not be started or gave no answer.\n" +
+		return {ok: false, error: {message: "The ChemLinker program could not be started or gave no answer.\n" +
 			compoundRegistry.python + "\n" + String(proc.allErrorOutput).substring(0, 500) +
-			"\nIf the compound registry was updated or moved: " + repair}};
+			"\nIf ChemLinker was updated or moved: " + repair}};
 	}
 	try {
 		parsed = JSON.parse(answer);
 	} catch (e) {
-		return {ok: false, error: {message: "Unreadable answer from the compound registry: " + e}};
+		return {ok: false, error: {message: "Unreadable answer from ChemLinker: " + e}};
 	}
 	return parsed;
 };
@@ -315,8 +320,9 @@ compoundRegistry.candidatesOf = function (aResult) {
 };
 
 /** Shows the candidates and the search field. aNote (HTML) replaces the sentence about the experiment found
-	in the title. Returns the chosen candidate, {search: "typed text"} when the user searched, or null. */
-compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSearchText) {
+	in the title. aCrude: whether the "Crude spectrum" box starts ticked. Returns the chosen candidate,
+	{search: "typed text"} when the user searched, or null; "crude" of what is returned says whether the box was ticked. */
+compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSearchText, aCrude) {
 	"use strict";
 	var ui = Application.loadUi(compoundRegistry.dialogUi()), w = ui.widgets, i, c, label, chosen = null,
 		shown = Math.min(aCandidates.length, compoundRegistry.maxButtons), refs = [], seen = {};
@@ -382,6 +388,7 @@ compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSe
 	}
 	w.lblFolder.text = aFilesFolder ? "Saves to the compound's folder in " + aFilesFolder : "";
 	w.chkAuto.checked = compoundRegistry.autoPropose();
+	w.chkCrude.checked = !!aCrude;
 	w.pbCancel.clicked.connect(function () { ui.reject(); });
 
 	compoundRegistry.dialog = ui;
@@ -391,14 +398,17 @@ compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSe
 		compoundRegistry.dialog = null;
 	}
 	settings.setValue(compoundRegistry.autoKey, w.chkAuto.checked ? "true" : "false");
+	if (chosen) {
+		chosen.crude = !!w.chkCrude.checked;
+	}
 	return chosen;
 };
 
-//! <compound folder>/<ID>_<sample>.mnova; never the name of another existing file.
+//! <compound folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum); never the name of another existing file.
 compoundRegistry.targetPath = function (aDoc, aDir, aCandidate) {
 	"use strict";
 	var dir = compoundRegistry.slashes(aDir),
-		stem = aCandidate.full_id + (aCandidate.match.file_label ? "_" + aCandidate.match.file_label : ""),
+		stem = aCandidate.full_id + (aCandidate.match.file_label ? "_" + aCandidate.match.file_label : "") + (aCandidate.crude ? "_crude" : ""),
 		path = dir + "/" + stem + ".mnova", n = 1, current = String(aDoc.name || "").replace(/\\/g, "/").toLowerCase();
 	while (File.exists(path) && path.toLowerCase() !== current) {
 		n++;
@@ -410,13 +420,13 @@ compoundRegistry.targetPath = function (aDoc, aDir, aCandidate) {
 //! Writes the link into the active document and saves it. Returns the path or "".
 compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 	"use strict";
-	var folder = compoundRegistry.compoundFolder(aCandidate.core_stereo_id), target, att;
+	var folder = compoundRegistry.compoundFolder(aCandidate.core_stereo_id), target, att, meta, problem;
 	if (!folder) {
 		return "";
 	}
 	target = compoundRegistry.targetPath(aDoc, folder, aCandidate);
 	att = new Attachment();
-	att.setMetaData({
+	meta = {
 		compound_id: aCandidate.full_id,
 		core_stereo_id: aCandidate.core_stereo_id,
 		experiment: aCandidate.match.experiment_ref,
@@ -427,8 +437,10 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 		formula: aCandidate.formula || "",
 		smiles: aCandidate.smiles,
 		inchikey: aCandidate.inchikey,
+		crude: !!aCandidate.crude,
 		linked_at: new Date().toISOString()
-	});
+	};
+	att.setMetaData(meta);
 	att.setTextData(aText);
 	if (!aDoc.setAttachment(compoundRegistry.attachmentName, att)) {
 		MessageBox.critical("Could not store the compound ID in the document.");
@@ -439,7 +451,16 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 		MessageBox.critical("The document could not be saved as\n" + target.path);
 		return "";
 	}
-	try { mainWindow.setStatusMessage("Linked to " + aCandidate.full_id + ", saved as " + target.path); } catch (ignore) {}
+	if (meta.crude) {
+		problem = compoundRegistry.recordCrude(aDoc, meta, target.path);
+		if (problem) {
+			MessageBox.warning("The document was saved as\n" + target.path + "\nbut the registry did not store it as a crude spectrum of " +
+				aCandidate.full_id + ":\n" + problem);
+		}
+	}
+	try {
+		mainWindow.setStatusMessage("Linked to " + aCandidate.full_id + (meta.crude ? " as a crude spectrum" : "") + ", saved as " + target.path);
+	} catch (ignore) {}
 	return target.path;
 };
 
@@ -448,7 +469,7 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 	(then the add-on stays silent unless it has something to propose). */
 compoundRegistry.propose = function (aInteractive) {
 	"use strict";
-	var doc = mainWindow.activeDocument, info, link, answer, candidates, chosen, path, note = "", typed = "", h = compoundRegistry.html;
+	var doc = mainWindow.activeDocument, info, link, answer, candidates, chosen, path, note = "", typed = "", crude = false, h = compoundRegistry.html;
 	if (!doc || !doc.isValid()) {
 		if (aInteractive) { MessageBox.information("Open a spectrum first."); }
 		return "";
@@ -458,10 +479,12 @@ compoundRegistry.propose = function (aInteractive) {
 		if (!aInteractive) {
 			return "";
 		}
-		if (MessageBox.question("This document is already linked to " + link.compound_id + ".\nLink it to another compound?",
+		if (MessageBox.question("This document is already linked to " + link.compound_id + (link.crude ? " as a crude spectrum" : "") +
+				".\nLink it again (to another compound, or to change the Crude box)?",
 				MessageBox.Yes, MessageBox.No) !== MessageBox.Yes) {
 			return "";
 		}
+		crude = !!link.crude;
 	}
 	info = compoundRegistry.documentText(doc);
 	if (!info.count) {
@@ -471,9 +494,9 @@ compoundRegistry.propose = function (aInteractive) {
 	answer = compoundRegistry.bridge(info.text);
 	if (!answer.ok) {
 		if (aInteractive) {
-			MessageBox.critical("Compound registry: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
+			MessageBox.critical("ChemLinker: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
 		} else {
-			print("Compound registry: " + JSON.stringify(answer.error));
+			print("ChemLinker: " + JSON.stringify(answer.error));
 		}
 		return "";
 	}
@@ -485,18 +508,19 @@ compoundRegistry.propose = function (aInteractive) {
 		note = "No registered experiment number was found in the title. Search for the experiment number or the compound ID below.";
 	}
 	while (true) {
-		chosen = compoundRegistry.choose(info.text, candidates, answer.result.files_folder, note, typed);
+		chosen = compoundRegistry.choose(info.text, candidates, answer.result.files_folder, note, typed, crude);
 		if (!chosen) {
 			compoundRegistry.declined[doc.uuid] = true;
 			return "";
 		}
+		crude = !!chosen.crude;
 		if (!chosen.search) {
 			break;
 		}
 		typed = chosen.search;
 		answer = compoundRegistry.runBridge("search", compoundRegistry.jsonAscii({query: typed, text: info.text}), "Searching the compound registry...");
 		if (!answer.ok) {
-			MessageBox.critical("Compound registry: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
+			MessageBox.critical("ChemLinker: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
 			return "";
 		}
 		candidates = compoundRegistry.candidatesOf(answer.result);
@@ -538,7 +562,7 @@ compoundRegistry.onSpectrumImported = function (aJSONString) {
 		}
 		compoundRegistry.timer.start(800);
 	} catch (e) {
-		print("Compound registry: " + e);
+		print("ChemLinker: " + e);
 	}
 };
 
@@ -555,7 +579,7 @@ compoundRegistry.onTimer = function () {
 			compoundRegistry.propose(false);
 		}
 	} catch (e) {
-		print("Compound registry: " + e);
+		print("ChemLinker: " + e);
 	}
 };
 
@@ -582,7 +606,7 @@ compoundRegistry.multipletReport = function (aSpec) {
 			reporter.useHtml = wasHtml;
 		}
 	} catch (e) {
-		print("Compound registry: multiplet report failed: " + e);
+		print("ChemLinker: multiplet report failed: " + e);
 	}
 	return report ? String(report) : "";
 };
@@ -612,7 +636,7 @@ compoundRegistry.peakReport = function (aSpec) {
 			report = reporter.report(aSpec, false);
 		}
 	} catch (e) {
-		print("Compound registry: peak report failed: " + e);
+		print("ChemLinker: peak report failed: " + e);
 	}
 	return report ? String(report) : "";
 };
@@ -748,7 +772,7 @@ compoundRegistry.exportPdf = function (aDoc, aPath, aLink, aSpectra, aItems) {
 					hidden.push(aItems[i]);
 				}
 			} catch (e0) {
-				print("Compound registry: could not hide a spectrum title: " + e0);
+				print("ChemLinker: could not hide a spectrum title: " + e0);
 			}
 		}
 		for (i = 0; i < aSpectra.length; i++) {
@@ -781,21 +805,21 @@ compoundRegistry.exportPdf = function (aDoc, aPath, aLink, aSpectra, aItems) {
 			}
 		}
 	} catch (e) {
-		print("Compound registry: PDF export failed: " + e);
+		print("ChemLinker: PDF export failed: " + e);
 	} finally {
 		try {
 			if (File.exists(fresh)) {
 				File.remove(fresh);
 			}
 		} catch (e2) {
-			print("Compound registry: could not remove " + fresh + ": " + e2);
+			print("ChemLinker: could not remove " + fresh + ": " + e2);
 		}
 		for (i = 0; i < hidden.length; i++) {
 			try {
 				hidden[i].setProperty("title.visible", true);
 				hidden[i].update();
 			} catch (e1) {
-				print("Compound registry: could not show a spectrum title again: " + e1);
+				print("ChemLinker: could not show a spectrum title again: " + e1);
 			}
 		}
 		try {
@@ -806,10 +830,78 @@ compoundRegistry.exportPdf = function (aDoc, aPath, aLink, aSpectra, aItems) {
 				aDoc.setCurPage(current);
 			}
 		} catch (e2) {
-			print("Compound registry: could not remove the summary page: " + e2);
+			print("ChemLinker: could not remove the summary page: " + e2);
 		}
 	}
 	return ok;
+};
+
+/** The name the registry files a spectrum under: dataset name, nucleus and dimension; two spectra of one
+	dataset in a document get "#2", "#3". aSeen counts the names given so far for the document. */
+compoundRegistry.spectrumKey = function (aItem, aSeen) {
+	"use strict";
+	var key = (String(aItem.title).split("\n")[0].replace(/^\s+|\s+$/g, "") || "untitled") + " | " + (aItem.nucleus || "?") + " | " + (aItem.dimensions || 1) + "D";
+	aSeen[key] = (aSeen[key] || 0) + 1;
+	return (aSeen[key] > 1 ? key + " #" + aSeen[key] : key).substring(0, 300);
+};
+
+/** Where the linked document aDoc is saved: a document that already lies in the compound's folder keeps its
+	name; any other gets <folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum). */
+compoundRegistry.documentPath = function (aDoc, aLink, aFolder) {
+	"use strict";
+	var path = compoundRegistry.slashes(aDoc.name);
+	if (!/\.mnova$/i.test(path) || !File.exists(path) ||
+			path.substring(0, path.lastIndexOf("/")).toLowerCase() !== aFolder.toLowerCase()) {
+		path = compoundRegistry.targetPath(aDoc, aFolder, {core_stereo_id: aLink.core_stereo_id, full_id: aLink.compound_id, crude: !!aLink.crude,
+			match: {file_label: aLink.file_label || String(aLink.sample || "").replace(/[^A-Za-z0-9.+\-]+/g, "_").substring(0, 60)}}).path;
+	}
+	return path;
+};
+
+/** Stores with the compound that the document saved as aPath holds crude spectra: per spectrum only what
+	names it and the path, no report, no parameters, no PDF. Returns "" or what went wrong. */
+compoundRegistry.recordCrude = function (aDoc, aLink, aPath) {
+	"use strict";
+	var specs = compoundRegistry.spectra(aDoc), payload = [], seen = {}, i, item, answer;
+	for (i = 0; i < specs.length; i++) {
+		item = {crude: true, sample: aLink.sample || "", mnova_file: aPath, title: "", nucleus: "", dimensions: 1};
+		try { item.title = String(specs[i].title || ""); } catch (e1) {}
+		try { item.nucleus = String(specs[i].nucleus()); } catch (e2) {}
+		try { item.dimensions = specs[i].dimCount; } catch (e3) {}
+		item.key = compoundRegistry.spectrumKey(item, seen);
+		payload.push(item);
+	}
+	if (!payload.length) {
+		return "The document has no NMR spectrum.";
+	}
+	answer = compoundRegistry.runBridge("record", compoundRegistry.jsonAscii({full_id: aLink.compound_id, spectra: payload}),
+		"Saving the crude spectrum with the compound...");
+	return answer.ok ? "" : (answer.error && answer.error.message ? answer.error.message : "unknown error");
+};
+
+/** Saves the linked active document again as a crude spectrum: the document and its path in the registry,
+	nothing else. Returns {mnova, pdf: "", recorded, crude: true, reports: [], problems: [...]} or null when nothing was saved. */
+compoundRegistry.saveCrude = function (aDoc, aLink) {
+	"use strict";
+	var folder = compoundRegistry.compoundFolder(aLink.core_stereo_id), path, problem,
+		out = {mnova: "", pdf: "", recorded: false, crude: true, reports: [], problems: []};
+	if (!folder) {
+		return null;
+	}
+	path = compoundRegistry.documentPath(aDoc, aLink, folder);
+	serialization.save(path, "mnova");
+	if (!File.exists(path)) {
+		out.problems.push("The document could not be saved as " + path + ".");
+		return out;
+	}
+	out.mnova = path;
+	problem = compoundRegistry.recordCrude(aDoc, aLink, path);
+	if (problem) {
+		out.problems.push("The registry did not store the crude spectrum: " + problem);
+	} else {
+		out.recorded = true;
+	}
+	return out;
 };
 
 /** Saves the linked active document, its PDF and the NMR data in the registry.
@@ -820,10 +912,7 @@ compoundRegistry.publish = function (aDoc, aLink) {
 		out = {mnova: "", pdf: "", recorded: false, reports: [], problems: []}, payload = [], item, keys = {};
 	for (i = 0; i < specs.length; i++) {
 		item = compoundRegistry.spectrumData(specs[i]);
-		// the name the registry files a spectrum under; two spectra of one dataset in a document get "#2", "#3"
-		key = (String(item.title).split("\n")[0].replace(/^\s+|\s+$/g, "") || "untitled") + " | " + (item.nucleus || "?") + " | " + (item.dimensions || 1) + "D";
-		keys[key] = (keys[key] || 0) + 1;
-		item.key = (keys[key] > 1 ? key + " #" + keys[key] : key).substring(0, 300);
+		item.key = compoundRegistry.spectrumKey(item, keys);
 		data.push(item);
 	}
 	folder = compoundRegistry.compoundFolder(aLink.core_stereo_id);
@@ -831,13 +920,7 @@ compoundRegistry.publish = function (aDoc, aLink) {
 		return null;
 	}
 	// a document that already lies in the compound's folder keeps its name; any other is saved into the folder
-	path = compoundRegistry.slashes(aDoc.name);
-	if (!/\.mnova$/i.test(path) || !File.exists(path) ||
-			path.substring(0, path.lastIndexOf("/")).toLowerCase() !== folder.toLowerCase()) {
-		target = compoundRegistry.targetPath(aDoc, folder, {core_stereo_id: aLink.core_stereo_id, full_id: aLink.compound_id,
-			match: {file_label: aLink.file_label || String(aLink.sample || "").replace(/[^A-Za-z0-9.+\-]+/g, "_").substring(0, 60)}});
-		path = target.path;
-	}
+	path = compoundRegistry.documentPath(aDoc, aLink, folder);
 	pdf = path.replace(/\.mnova$/i, "") + ".pdf";
 
 	if (compoundRegistry.exportPdf(aDoc, pdf, aLink, data, specs)) {
@@ -900,14 +983,15 @@ compoundRegistry.publish = function (aDoc, aLink) {
 //! Menu action: save the document, the PDF and the multiplet report with the compound (links first when needed).
 compoundRegistry.saveToCompound = function () {
 	"use strict";
-	var doc = mainWindow.activeDocument, link, result, i, r, text, missing = [], others = 0;
+	var doc = mainWindow.activeDocument, link, result, i, r, text, missing = [], others = 0, linked = "";
 	if (!doc || !doc.isValid()) {
 		MessageBox.information("Open a spectrum first.");
 		return null;
 	}
 	link = compoundRegistry.linkOf(doc);
 	if (!link || !link.compound_id) {
-		if (!compoundRegistry.propose(true)) {
+		linked = compoundRegistry.propose(true);
+		if (!linked) {
 			return null;
 		}
 		doc = mainWindow.activeDocument;
@@ -915,6 +999,23 @@ compoundRegistry.saveToCompound = function () {
 		if (!link || !link.compound_id) {
 			return null;
 		}
+	}
+	if (link.crude) {
+		// a crude spectrum: the document and its path, no PDF and no report (linking just now saved both already)
+		result = linked ? {mnova: linked, pdf: "", recorded: true, crude: true, reports: [], problems: []} : compoundRegistry.saveCrude(doc, link);
+		if (!result) {
+			return null;
+		}
+		text = "Saved as a crude spectrum of " + link.compound_id + ":\n" + (result.mnova || "(not saved)") +
+			"\n\nNo PDF and no report are made for a crude spectrum; the catalogue shows only this path." +
+			"\nTo save it as a full spectrum, use Link Spectrum to Compound ID again and untick the Crude box.";
+		if (result.problems.length) {
+			MessageBox.warning(text + "\n\nProblems:\n- " + result.problems.join("\n- "));
+		} else if (mainWindow.hasGui) {
+			MessageBox.information(text);
+		}
+		try { mainWindow.setStatusMessage("Saved the crude spectrum with " + link.compound_id); } catch (ignore0) {}
+		return result;
 	}
 	result = compoundRegistry.publish(doc, link);
 	if (!result) {
@@ -973,7 +1074,7 @@ compoundRegistry.placeStructure = function (aDoc, aMolfile) {
 		item.update();
 		aDoc.update();
 	} catch (e) {
-		print("Compound registry: the structure was added but could not be placed: " + e);
+		print("ChemLinker: the structure was added but could not be placed: " + e);
 	}
 	return item;
 };
@@ -1228,7 +1329,7 @@ compoundRegistry.openReference = function (aPath) {
 			}
 		}
 	} catch (e) {
-		print("Compound registry: " + e);
+		print("ChemLinker: " + e);
 	}
 	if (!serialization.open(path)) {
 		MessageBox.critical("MestReNova could not open\n" + path);
@@ -1245,7 +1346,7 @@ compoundRegistry.library = function () {
 	while (true) {
 		answer = compoundRegistry.runBridge("library", compoundRegistry.jsonAscii({query: query}), "Reading the compound library...");
 		if (!answer.ok) {
-			MessageBox.critical("Compound registry: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
+			MessageBox.critical("ChemLinker: " + (answer.error && answer.error.message ? answer.error.message : "unknown error"));
 			return "";
 		}
 		while (true) {
@@ -1283,6 +1384,7 @@ compoundRegistry.showLink = function () {
 		(link.formula ? "\nFormula: " + link.formula : "") +
 		"\nExperiment: " + link.experiment + ", product " + link.product_index +
 		"\nSample: " + link.sample +
+		(link.crude ? "\nCrude spectrum: yes" : "") +
 		"\nLinked: " + link.linked_at +
 		"\nFile: " + doc.name);
 };

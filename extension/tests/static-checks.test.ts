@@ -42,7 +42,7 @@ describe("manifest", () => {
 
   it("has a toolbar button without a popup that opens the compounds page", () => {
     expect(manifest.action).toEqual({
-      default_title: "All compounds (Compound Registry)",
+      default_title: "All compounds (ChemLinker)",
       default_icon: "compounds-icon.svg",
       default_area: "navbar",
     });

@@ -10,8 +10,8 @@ The extension has one source tree, `extension/`. It is built twice:
 
 | Browser | Build | Output | Package |
 | --- | --- | --- | --- |
-| Firefox 140+ | `npm run build` | `extension/dist/` | `npm run package` writes `extension/artifacts/compound-registry-<version>-firefox.xpi` |
-| Chrome 120+ | `npm run build:chrome` | `chrome-extension/` in the project folder | `npm run package:chrome` writes `extension/artifacts/compound-registry-<version>-chrome.zip` |
+| Firefox 140+ | `npm run build` | `extension/dist/` | `npm run package` writes `extension/artifacts/chemlinker-<version>-firefox.xpi` |
+| Chrome 120+ | `npm run build:chrome` | `chrome-extension/` in the project folder | `npm run package:chrome` writes `extension/artifacts/chemlinker-<version>-chrome.zip` |
 
 The Firefox manifest is `extension/static/manifest.json`. The Chrome manifest
 is derived from it at build time by `extension/scripts/chrome-manifest.mjs`

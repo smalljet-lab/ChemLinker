@@ -1,4 +1,4 @@
-# Compound registry
+# ChemLinker
 
 A local registry that gives every compound you make a permanent ID of the form
 `CORE_STEREO_BATCH`, for example `ABC000042_01_003`: compound 42, its first
@@ -38,11 +38,11 @@ Windows user only.
 ### 1. Get the project folder
 
 Either download the ZIP from
-<https://github.com/smalljet-lab/compound-registry> (green **Code** button,
+<https://github.com/smalljet-lab/ChemLinker> (green **Code** button,
 **Download ZIP**) and unpack it, or clone it:
 
 ```
-git clone https://github.com/smalljet-lab/compound-registry.git
+git clone https://github.com/smalljet-lab/ChemLinker.git
 ```
 
 Put the folder where it can stay, for example `C:\Users\<you>\compound-registry`.
@@ -106,7 +106,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 --dry-run
 ### 3. Load the extension in the browser
 
 **Firefox.** The extension file is
-`extension\artifacts\compound-registry-<version>-firefox.xpi`. It is not signed
+`extension\artifacts\chemlinker-<version>-firefox.xpi`. It is not signed
 by Mozilla, and this decides what works:
 
 - **Firefox ESR, Developer Edition and Nightly** can install it for good. Open
@@ -147,11 +147,11 @@ The questions and the steps are the same as on Windows. Differences:
 
 If you do not want to install Node.js, download the two extension packages
 from the Releases page,
-<https://github.com/smalljet-lab/compound-registry/releases>:
+<https://github.com/smalljet-lab/ChemLinker/releases>:
 
-- `compound-registry-<version>-firefox.xpi` for Firefox. Install it as
+- `chemlinker-<version>-firefox.xpi` for Firefox. Install it as
   described above.
-- `compound-registry-<version>-chrome.zip` for Chrome. Unpack it into a folder
+- `chemlinker-<version>-chrome.zip` for Chrome. Unpack it into a folder
   that can stay, and choose that folder with **Load unpacked**.
 
 These packages work only with the default ELN address
@@ -195,7 +195,7 @@ What you still have to do by hand is listed at the end of the update:
 
 - **Firefox:** install the new `.xpi` file, the same way as the first time.
 - **Chrome:** open `chrome://extensions` and click the reload arrow of
-  "Compound Registry".
+  "ChemLinker".
 - Reload the open ELN tabs.
 - Restart MestReNova if you use the add-on.
 
@@ -232,9 +232,13 @@ run the update and reload the extension.
 5. In the details of a compound you find its batches and experiments, its
    name (**Get name from ChemDraw** if ChemDraw is installed), its spectra and
    files, and **Generate ChemDraw tree**, which draws the synthesis route.
-6. In MestReNova, the add-on is in the menu **Scripts > Compound Registry**.
+6. In MestReNova, the add-on is in the menu **Scripts > ChemLinker**.
    **Link Spectrum to Compound ID...** assigns the open spectrum to an ID and
    **Save Report and PDF to Compound** saves it into the compound's folder.
+   For the spectrum of a crude product, tick **Crude spectrum** in the dialog
+   that asks for the compound: the document is saved as
+   `<ID>_<sample>_crude.mnova`, without PDF and report, and the catalogue
+   shows only where that file is.
 7. To register many old experiments at once, export the experiment list from
    the ELN as a CSV file and use the **Import** view. **Check only (creates
    nothing)** shows what would happen first.

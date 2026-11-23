@@ -12,6 +12,10 @@ size limits, and the report also as plain text (``1H NMR (500 MHz, CDCl3)
 
 A spectrum is an annotation of a batch, like a name: it never takes part in
 an ID and may be recorded again (the newer data replaces the older).
+
+A spectrum the chemist marked as crude (``"crude": true``, the "Crude" box of
+the add-on) is recorded with its ``.mnova`` document only: no report, no
+parameters and no PDF are stored, and the catalogue shows just the path.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ from typing import Any
 
 from .errors import RegistryError
 
-__all__ = ["clean_spectrum", "report_text", "spectrum_key", "TEXT_FIELDS", "REPORT_KINDS"]
+__all__ = ["clean_spectrum", "report_text", "spectrum_key", "TEXT_FIELDS", "REPORT_KINDS",
+           "CRUDE_DROPPED"]
 
 #: Text fields of a spectrum and their length limits.
 TEXT_FIELDS: dict[str, int] = {
@@ -34,6 +39,9 @@ TEXT_FIELDS: dict[str, int] = {
 #: What a report was made from: the multiplets (shift, multiplicity, J,
 #: integral) or, without multiplets, the picked peaks (shifts only).
 REPORT_KINDS = ("multiplets", "peaks")
+#: What is never stored for a crude spectrum (``"crude": true``): only where
+#: its document lies is recorded, no report, no parameters, no PDF.
+CRUDE_DROPPED = ("report", "report_html", "report_kind", "pdf_file", "parameters")
 _MAX_PARAMETERS = 200
 _MAX_PARAMETER_NAME = 100
 _MAX_PARAMETER_VALUE = 2000
@@ -80,7 +88,8 @@ def clean_spectrum(raw: Any) -> tuple[str, dict[str, Any]]:
     """``(spectrum_key, data)`` for one spectrum sent by the add-on.
 
     Unknown fields are dropped. ``report`` is derived from ``report_html``
-    when only the HTML is given. ``invalid_argument`` for anything that is
+    when only the HTML is given. With ``"crude": true`` the fields of
+    :data:`CRUDE_DROPPED` are left out. ``invalid_argument`` for anything that is
     not an object, a field of the wrong type or over its limit.
     """
     if not isinstance(raw, dict):
@@ -129,6 +138,14 @@ def clean_spectrum(raw: Any) -> tuple[str, dict[str, Any]]:
                 cleaned[name.strip()[:_MAX_PARAMETER_NAME]] = text[:_MAX_PARAMETER_VALUE]
         if cleaned:
             data["parameters"] = cleaned
+
+    crude = raw.get("crude")
+    if crude is not None and not isinstance(crude, bool):
+        raise _invalid(f"crude of a spectrum must be true or false, got {crude!r}.")
+    if crude:
+        data["crude"] = True
+        for field in CRUDE_DROPPED:
+            data.pop(field, None)
 
     key = raw.get("key")
     if key is not None and (not isinstance(key, str) or len(key) > _MAX_KEY):

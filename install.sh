@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the compound registry for the current user (macOS / Linux).
+# Installs ChemLinker for the current user (macOS / Linux).
 #
 # Usage:  sh install.sh [options]
 #

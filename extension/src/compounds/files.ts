@@ -20,7 +20,7 @@ export interface FilesEntry {
 }
 
 export const NO_SPECTRA_TEXT =
-  "No spectra are recorded for this compound yet. Spectra saved from MestReNova with the Compound Registry add-on appear here.";
+  "No spectra are recorded for this compound yet. Spectra saved from MestReNova with the ChemLinker add-on appear here.";
 export const FOLDER_MISSING_TEXT = "This folder does not exist yet.";
 
 export class FilesController {
@@ -140,6 +140,38 @@ export function humanSize(bytes: number): string {
 /** "EX0001_01_001_FC2.pdf · 1.2 MB · 2026-11-17 14:05". */
 export function folderFileLine(file: Pick<FolderFile, "name" | "size" | "modified">): string {
   return [file.name, humanSize(file.size), shortDate(file.modified)].filter((x) => x !== "").join(" · ");
+}
+
+/** The spectra shown with their details: every recorded spectrum that is not a crude one. */
+export function fullSpectra(result: CompoundFilesResult): SpectrumInfo[] {
+  return result.spectra.filter((s) => s.crude !== true);
+}
+
+/** One saved document of crude spectra: of these only the path is shown. */
+export interface CrudeDocument {
+  full_id: string;
+  experiment_code: string | null;
+  /** The recorded path of the MestReNova document, as text. */
+  path: string;
+}
+
+/**
+ * The crude spectra as one entry per batch and saved document (a document
+ * with a 1H and a 13C spectrum is recorded twice but listed once), in the
+ * order recorded. A crude record without a path is left out: there is nothing to show.
+ */
+export function crudeDocuments(result: CompoundFilesResult): CrudeDocument[] {
+  const seen = new Set<string>();
+  const out: CrudeDocument[] = [];
+  for (const s of result.spectra) {
+    const path = s.mnova_file?.trim() ?? "";
+    if (s.crude !== true || path === "") continue;
+    const key = `${s.full_id}\n${path.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ full_id: s.full_id, experiment_code: s.experiment_code, path });
+  }
+  return out;
 }
 
 /** The files of the folder that no recorded spectrum names. */

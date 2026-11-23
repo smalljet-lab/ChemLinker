@@ -458,8 +458,8 @@ describe("npm run package", () => {
       root: dir,
       dist: join(dir, "dist"),
       artifacts: join(dir, "artifacts"),
-      xpi: join(dir, "artifacts", `compound-registry-${version}-firefox.xpi`),
-      zip: join(dir, "artifacts", `compound-registry-${version}-chrome.zip`),
+      xpi: join(dir, "artifacts", `chemlinker-${version}-firefox.xpi`),
+      zip: join(dir, "artifacts", `chemlinker-${version}-chrome.zip`),
     };
   }
 
@@ -644,7 +644,7 @@ describe("npm run package", () => {
         expect(result.status, result.stderr).toBe(0);
       },
     });
-    expect(out).toBe(join(p.artifacts, `compound-registry-${firefoxManifest.version}-chrome.zip`));
+    expect(out).toBe(join(p.artifacts, `chemlinker-${firefoxManifest.version}-chrome.zip`));
     const names = zipNames(readFileSync(out));
     expect(names[0]).toBe("manifest.json");
     expect([...names].sort()).toEqual(filesUnder(dist));

@@ -160,11 +160,11 @@ export function mountPanel(deps: PanelDeps): PanelHandle {
   const advancedId = "crm-advanced";
   const launcher = el("button", {
     class: "launcher",
-    attrs: { type: "button", "aria-expanded": "false", "aria-controls": panelId, title: "Compound registry" },
+    attrs: { type: "button", "aria-expanded": "false", "aria-controls": panelId, title: "ChemLinker" },
   });
   const closeButton = el("button", {
     class: "icon-btn",
-    attrs: { type: "button", "aria-label": "Close the compound registry panel", title: "Close" },
+    attrs: { type: "button", "aria-label": "Close the ChemLinker panel", title: "Close" },
     text: "×",
   });
   const experimentLine = el("p", { class: "experiment" });
@@ -238,11 +238,11 @@ export function mountPanel(deps: PanelDeps): PanelHandle {
 
   const panel = el(
     "section",
-    { class: "panel", attrs: { id: panelId, "aria-label": "Compound registry" } },
+    { class: "panel", attrs: { id: panelId, "aria-label": "ChemLinker" } },
     el(
       "div",
       { class: "panel-head" },
-      el("div", { class: "panel-title" }, el("h2", { text: "Compound registry" }), experimentLine),
+      el("div", { class: "panel-title" }, el("h2", { text: "ChemLinker" }), experimentLine),
       closeButton,
     ),
     navRow,
@@ -636,10 +636,10 @@ export function mountPanel(deps: PanelDeps): PanelHandle {
     if (badge) launcher.append(" ", el("span", { class: badge === "✓" ? "badge done" : "badge", text: badge }));
     const label =
       withoutId > 0
-        ? `Open the compound registry panel: ${withoutId} ${withoutId === 1 ? "product has" : "products have"} no ID yet`
+        ? `Open the ChemLinker panel: ${withoutId} ${withoutId === 1 ? "product has" : "products have"} no ID yet`
         : total > 0
-          ? "Open the compound registry panel: every product has an ID"
-          : "Open the compound registry panel";
+          ? "Open the ChemLinker panel: every product has an ID"
+          : "Open the ChemLinker panel";
     launcher.setAttribute("aria-label", label);
   }
 

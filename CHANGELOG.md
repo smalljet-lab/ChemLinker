@@ -5,6 +5,35 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The registry
 program and the browser extension are released together under one version
 number.
 
+## [0.11.0] - 2026-11-23
+
+### Added
+
+- **Crude spectra in the MestReNova add-on.** The dialog that links a
+  spectrum to a compound ID has a box **Crude spectrum**. With the box
+  ticked, the document is saved into the compound's folder as
+  `<ID>_<sample>_crude.mnova` and only the place of that file is stored with
+  the compound: no PDF, no shift report and no parameters. The catalogue
+  lists it under **Crude spectrum** with its path and nothing else. To turn a
+  crude spectrum into a full one, link the document again with the box
+  unticked and use **Save Report and PDF to Compound**.
+
+### Changed
+
+- **The project is now called ChemLinker.** The browser extension, the
+  panel in the ELN, the MestReNova menu (**Scripts > ChemLinker**) and the
+  messages use the new name, and the extension packages are named
+  `chemlinker-<version>-firefox.xpi` and `chemlinker-<version>-chrome.zip`.
+  What you type and what is stored keep their names: the command is still
+  `compound-registry`, and the data folder, the IDs and the registration with
+  the browsers do not change.
+
+### Updating from 0.10.0
+
+Run `update.cmd` (or `install.cmd`), which also brings the MestReNova add-on
+up to date, restart MestReNova and install the 0.11.0 extension in the
+browser. The registry itself does not change.
+
 ## [0.10.0] - 2026-11-19
 
 First public release.
@@ -100,4 +129,5 @@ What changes:
   folder names. Existing registries keep their format.
 - `chrome-extension.md` was replaced by `docs/browsers.md`.
 
-[0.10.0]: https://github.com/smalljet-lab/compound-registry/releases/tag/v0.10.0
+[0.11.0]: https://github.com/smalljet-lab/ChemLinker/releases/tag/v0.11.0
+[0.10.0]: https://github.com/smalljet-lab/ChemLinker/releases/tag/v0.10.0

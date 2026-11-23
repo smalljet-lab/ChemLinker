@@ -534,7 +534,8 @@ def cmd_spectra(ctx: Context) -> int:
     for item in result["spectra"]:
         data = item["data"]
         out(f"{item['full_id']}  {item['spectrum_key']}  (recorded {item['updated_at']})")
-        out(f"  {data.get('report') or '(no multiplet report)'}")
+        out("  crude spectrum (document only)" if data.get("crude") is True
+            else f"  {data.get('report') or '(no multiplet report)'}")
         for label, field in (("mnova", "mnova_file"), ("pdf", "pdf_file")):
             if data.get(field):
                 where = now.get((item["full_id"], item["spectrum_key"], field))

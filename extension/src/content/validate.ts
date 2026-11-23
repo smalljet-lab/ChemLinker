@@ -490,7 +490,8 @@ export function isSpectrumInfo(v: unknown): v is SpectrumInfo {
     v.parameters.every(isSpectrumParameter) &&
     (v.mnova_file === null || isPathText(v.mnova_file)) &&
     (v.pdf_file === null || isPathText(v.pdf_file)) &&
-    typeof v.pdf_available === "boolean"
+    typeof v.pdf_available === "boolean" &&
+    (v.crude === undefined || typeof v.crude === "boolean")
   );
 }
 

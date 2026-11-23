@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Compound Registry",
-  "version": "0.10.0",
+  "name": "ChemLinker",
+  "version": "0.11.0",
   "description": "Looks up and issues permanent compound IDs from the local compound registry while you work in the Sciformation ELN.",
   "browser_specific_settings": {
     "gecko": {
@@ -21,7 +21,7 @@
     "https://sciformation.chemie.unibas.ch/*"
   ],
   "action": {
-    "default_title": "All compounds (Compound Registry)",
+    "default_title": "All compounds (ChemLinker)",
     "default_icon": "compounds-icon.svg",
     "default_area": "navbar"
   },
