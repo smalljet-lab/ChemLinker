@@ -346,6 +346,63 @@ describe("spectra and files: content", () => {
     expect(s.querySelectorAll(".pdf-show")).toHaveLength(1);
   });
 
+  it("shows of a spectrum of an undesired side product only the path of its document", async () => {
+    const ctx = mount();
+    const path = "C:\\Registry\\compounds\\000042_01\\000042_01_001_FC2_side.mnova";
+    const crudePath = "C:\\Registry\\compounds\\000042_01\\000042_01_001_FC3_crude_side.mnova";
+    // even if a host sent details or a PDF with such a spectrum, none of it is shown
+    const side = (over: Partial<SpectrumInfo> = {}) => ({ ...FULL_SPECTRUM(), side_product: true, mnova_file: path, ...over });
+    const s = await shown(
+      ctx,
+      filesResult({
+        spectra: [
+          side(),
+          side({ spectrum_key: "ABC-001 13C", nucleus: "13C" }), // the same document: listed once
+          side({ spectrum_key: "no file", mnova_file: null }), // nothing to show
+          side({ spectrum_key: "both", crude: true, mnova_file: crudePath }), // crude and side product: listed here only
+        ],
+      }),
+    );
+    expect(s.querySelector("li.spectrum")).toBeNull();
+    expect(s.querySelector(".files-empty")).toBeNull();
+    expect(s.querySelector("li.crude-spectrum")).toBeNull();
+    expect(s.querySelector(".side-head")!.textContent).toBe("Undesired side products");
+    const items = Array.from(s.querySelectorAll<HTMLElement>("li.side-spectrum"));
+    expect(items).toHaveLength(2);
+    expect(items[0]!.querySelector(".side-of")!.textContent).toBe("000042_01_001 · ABC-001");
+    expect(items[0]!.querySelector(".side-path")!.textContent).toBe(path);
+    expect(items[1]!.querySelector(".side-of")!.textContent).toBe("000042_01_001 · ABC-001 · crude");
+    expect(items[1]!.querySelector(".side-path")!.textContent).toBe(crudePath);
+    expect(items[0]!.querySelector("a")).toBeNull();
+    for (const cls of [".pdf-show", ".pdf-missing", ".spectrum-report", ".spectrum-params", ".report-text"]) {
+      expect(s.querySelector(cls), cls).toBeNull();
+    }
+    expect(s.textContent).not.toContain("7.26");
+    expect(s.textContent).not.toContain(".pdf");
+    button(items[0]!, "Copy").click();
+    await flush();
+    expect(ctx.copyText).toHaveBeenCalledWith(path);
+  });
+
+  it("shows full, crude and side-product spectra next to each other", async () => {
+    const ctx = mount();
+    const s = await shown(
+      ctx,
+      filesResult({
+        spectra: [
+          FULL_SPECTRUM(),
+          spectrum({ spectrum_key: "c1", crude: true, mnova_file: "C:\\r\\a_crude.mnova" }),
+          spectrum({ spectrum_key: "s1", side_product: true, mnova_file: "C:\\r\\b_side.mnova" }),
+        ],
+      }),
+    );
+    expect(s.querySelectorAll("li.spectrum")).toHaveLength(1);
+    expect(Array.from(s.querySelectorAll(".crude-path")).map((p) => p.textContent)).toEqual(["C:\\r\\a_crude.mnova"]);
+    expect(s.querySelector(".side-head")!.textContent).toBe("Undesired side product");
+    expect(Array.from(s.querySelectorAll(".side-path")).map((p) => p.textContent)).toEqual(["C:\\r\\b_side.mnova"]);
+    expect(s.querySelectorAll(".pdf-show")).toHaveLength(1);
+  });
+
   it("says where a PDF that is no longer available was", async () => {
     const ctx = mount();
     const s = await shown(ctx, filesResult({ spectra: [spectrum({ pdf_file: "D:\\old\\a.pdf", pdf_available: false })] }));

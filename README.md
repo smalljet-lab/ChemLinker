@@ -238,7 +238,10 @@ run the update and reload the extension.
    For the spectrum of a crude product, tick **Crude spectrum** in the dialog
    that asks for the compound: the document is saved as
    `<ID>_<sample>_crude.mnova`, without PDF and report, and the catalogue
-   shows only where that file is.
+   shows only where that file is. For the spectrum of an undesired side
+   product, tick **Undesired side product** below it: the document is saved
+   as `<ID>_<sample>_side.mnova`, also without PDF and report, and the
+   catalogue lists its path under **Undesired side product**.
 7. To register many old experiments at once, export the experiment list from
    the ELN as a CSV file and use the **Import** view. **Check only (creates
    nothing)** shows what would happen first.

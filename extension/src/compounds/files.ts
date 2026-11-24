@@ -142,36 +142,55 @@ export function folderFileLine(file: Pick<FolderFile, "name" | "size" | "modifie
   return [file.name, humanSize(file.size), shortDate(file.modified)].filter((x) => x !== "").join(" · ");
 }
 
-/** The spectra shown with their details: every recorded spectrum that is not a crude one. */
+/**
+ * The spectra shown with their details: every recorded spectrum that is
+ * neither a crude one nor one of an undesired side product.
+ */
 export function fullSpectra(result: CompoundFilesResult): SpectrumInfo[] {
-  return result.spectra.filter((s) => s.crude !== true);
+  return result.spectra.filter((s) => s.crude !== true && s.side_product !== true);
 }
 
-/** One saved document of crude spectra: of these only the path is shown. */
+/** One saved document of crude or side-product spectra: of these only the path is shown. */
 export interface CrudeDocument {
   full_id: string;
   experiment_code: string | null;
   /** The recorded path of the MestReNova document, as text. */
   path: string;
+  /** True when the spectrum was also marked as crude (always true in `crudeDocuments`). */
+  crude: boolean;
+}
+
+function documentsOf(result: CompoundFilesResult, wanted: (s: SpectrumInfo) => boolean): CrudeDocument[] {
+  const seen = new Set<string>();
+  const out: CrudeDocument[] = [];
+  for (const s of result.spectra) {
+    const path = s.mnova_file?.trim() ?? "";
+    if (!wanted(s) || path === "") continue;
+    const key = `${s.full_id}\n${path.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ full_id: s.full_id, experiment_code: s.experiment_code, path, crude: s.crude === true });
+  }
+  return out;
 }
 
 /**
  * The crude spectra as one entry per batch and saved document (a document
  * with a 1H and a 13C spectrum is recorded twice but listed once), in the
- * order recorded. A crude record without a path is left out: there is nothing to show.
+ * order recorded. A crude record without a path is left out: there is nothing
+ * to show. A crude spectrum of an undesired side product is not listed here
+ * but by `sideProductDocuments`.
  */
 export function crudeDocuments(result: CompoundFilesResult): CrudeDocument[] {
-  const seen = new Set<string>();
-  const out: CrudeDocument[] = [];
-  for (const s of result.spectra) {
-    const path = s.mnova_file?.trim() ?? "";
-    if (s.crude !== true || path === "") continue;
-    const key = `${s.full_id}\n${path.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ full_id: s.full_id, experiment_code: s.experiment_code, path });
-  }
-  return out;
+  return documentsOf(result, (s) => s.crude === true && s.side_product !== true);
+}
+
+/**
+ * The spectra of undesired side products, listed like the crude ones: one
+ * entry per batch and saved document, only the path.
+ */
+export function sideProductDocuments(result: CompoundFilesResult): CrudeDocument[] {
+  return documentsOf(result, (s) => s.side_product === true);
 }
 
 /** The files of the folder that no recorded spectrum names. */

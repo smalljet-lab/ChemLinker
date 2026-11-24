@@ -1931,7 +1931,8 @@ class RegistryService:
                           for k, v in raw_parameters.items() if v is not None]
             parameters.sort(key=lambda p: (p["name"].casefold(), p["name"]))
         crude = data.get("crude") is True
-        if crude:                       # only where the document lies is shown
+        side_product = data.get("side_product") is True
+        if crude or side_product:       # only where the document lies is shown
             return {
                 "full_id": record.get("full_id"),
                 "spectrum_key": record.get("spectrum_key"),
@@ -1941,7 +1942,7 @@ class RegistryService:
                 "solvent": None, "experiment": None, "pulse_sequence": None,
                 "frequency_mhz": None, "dimensions": None, "report": None, "parameters": [],
                 "mnova_file": text("mnova_file"), "pdf_file": None, "pdf_available": False,
-                "crude": True,
+                "crude": crude, "side_product": side_product,
             }
         pdf_file = text("pdf_file")
         return {
@@ -1963,7 +1964,7 @@ class RegistryService:
             "mnova_file": text("mnova_file"),
             "pdf_file": pdf_file,
             "pdf_available": pdf_path is not None and files_mod.pdf_readable(str(pdf_path)),
-            "crude": False,
+            "crude": False, "side_product": False,
         }
 
     def _compound_spectra(self, core_stereo_id: str) -> list[dict[str, Any]]:

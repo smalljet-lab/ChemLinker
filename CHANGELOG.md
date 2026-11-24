@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The registry
 program and the browser extension are released together under one version
 number.
 
+## [Unreleased]
+
+### Added
+
+- **Spectra of undesired side products in the MestReNova add-on.** Under the
+  **Crude spectrum** box, the dialog that links a spectrum to a compound ID
+  has a box **Undesired side product**. With the box ticked, the document is
+  saved into the compound's folder as `<ID>_<sample>_side.mnova`
+  (`..._crude_side.mnova` with both boxes ticked) and, as for a crude
+  spectrum, only the place of that file is stored with the compound: no PDF,
+  no shift report and no parameters. The catalogue lists it under
+  **Undesired side product** with its path and nothing else.
+
 ## [0.11.0] - 2026-11-23
 
 ### Added

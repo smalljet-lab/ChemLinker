@@ -761,6 +761,12 @@ export interface SpectrumInfo {
    * is sent and shown (no details, no PDF). Missing from a host older than 0.11.
    */
   crude?: boolean;
+  /**
+   * True for a spectrum saved with the add-on's "Undesired side product" box:
+   * like a crude one, only `mnova_file` is sent and shown. Missing from a host
+   * older than 0.12.
+   */
+  side_product?: boolean;
 }
 
 /** One file lying directly in a compound's folder. */

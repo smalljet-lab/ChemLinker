@@ -541,9 +541,24 @@ def test_a_crude_spectrum_keeps_only_where_its_document_is():
     assert "crude" not in clean_spectrum(_spectrum())[1]
 
 
+def test_a_side_product_spectrum_keeps_only_where_its_document_is():
+    from compound_registry.spectra import clean_spectrum
+
+    key, data = clean_spectrum(_spectrum(side_product=True, report_kind="multiplets"))
+    assert key == "user.011.1.fid | 1H | 1D"
+    assert data["side_product"] is True and data["mnova_file"] == "C:/nmr/a.mnova"
+    assert "crude" not in data
+    assert not {"report", "report_html", "report_kind", "pdf_file", "parameters"} & set(data)
+    both = clean_spectrum(_spectrum(side_product=True, crude=True))[1]
+    assert both["side_product"] is True and both["crude"] is True
+    assert "side_product" not in clean_spectrum(_spectrum(side_product=False))[1]
+    assert "side_product" not in clean_spectrum(_spectrum())[1]
+
+
 @pytest.mark.parametrize("bad", [
     "text", {"title": ["a"]}, {"frequency_mhz": -1}, {"dimensions": 9}, {"parameters": []},
-    {"report_html": "x" * 60001}, {"crude": "yes"}, {"crude": 1}])
+    {"report_html": "x" * 60001}, {"crude": "yes"}, {"crude": 1},
+    {"side_product": "yes"}, {"side_product": 1}])
 def test_malformed_spectrum_is_refused(bad):
     from compound_registry.errors import RegistryError
     from compound_registry.spectra import clean_spectrum

@@ -131,6 +131,7 @@ describe("validators: compound_files", () => {
     ["mnova_file a number", { mnova_file: 3 }],
     ["updated_at missing", { updated_at: undefined }],
     ["crude as text", { crude: "yes" }],
+    ["side_product as text", { side_product: "yes" }],
   ];
   it.each(badSpectra)("rejects a spectrum with %s", (_name, over) => {
     expect(isSpectrumInfo({ ...spectrum(), ...over })).toBe(false);
@@ -141,6 +142,8 @@ describe("validators: compound_files", () => {
     expect(isSpectrumInfo(spectrum())).toBe(true);
     expect(isSpectrumInfo(spectrum({ crude: false }))).toBe(true);
     expect(isSpectrumInfo(spectrum({ crude: true, mnova_file: "C:\\r\\a_crude.mnova" }))).toBe(true);
+    expect(isSpectrumInfo(spectrum({ side_product: false }))).toBe(true);
+    expect(isSpectrumInfo(spectrum({ side_product: true, mnova_file: "C:\\r\\a_side.mnova" }))).toBe(true);
   });
 
   it("the runtime client turns a malformed answer into host_bad_response", async () => {

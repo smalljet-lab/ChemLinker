@@ -53,6 +53,7 @@ import {
   folderFileLine,
   NO_SPECTRA_TEXT,
   crudeDocuments,
+  sideProductDocuments,
   fullSpectra,
   otherFiles,
   spectrumHeading,
@@ -1300,9 +1301,10 @@ export function mountCompoundsPage(deps: CompoundsPageDeps): CompoundsPageHandle
     }
     const full = fullSpectra(result);
     const crude = crudeDocuments(result);
+    const side = sideProductDocuments(result);
     if (full.length > 0) {
       out.push(el("ul", { class: "spectra", attrs: { "aria-label": `Spectra of ${id}` } }, ...full.map((s) => spectrumBlock(id, s))));
-    } else if (crude.length === 0) {
+    } else if (crude.length === 0 && side.length === 0) {
       out.push(el("p", { class: "empty-note files-empty", text: NO_SPECTRA_TEXT }));
     }
     if (crude.length > 0) {
@@ -1322,6 +1324,34 @@ export function mountCompoundsPage(deps: CompoundsPageDeps): CompoundsPageHandle
               el("span", { class: "mono crude-path", text: c.path }),
               " ",
               copyButton(el, copyCtx, c.path, `the path of the crude spectrum of ${c.full_id}`, `copy-crude:${id}:${index}`),
+            );
+          }),
+        ),
+      );
+    }
+    if (side.length > 0) {
+      // Of a spectrum of an undesired side product, too, only where its document lies is shown.
+      out.push(
+        el("h6", { class: "crude-head side-head", text: side.length === 1 ? "Undesired side product" : "Undesired side products" }),
+        el(
+          "ul",
+          { class: "list crude-spectra side-spectra", attrs: { "aria-label": `Spectra of undesired side products of ${id}` } },
+          ...side.map((c, index) => {
+            const code = c.experiment_code?.trim() ?? "";
+            return el(
+              "li",
+              { class: "side-spectrum", attrs: { "data-full-id": c.full_id } },
+              el(
+                "span",
+                { class: "small side-of" },
+                el("span", { class: "mono", text: c.full_id }),
+                code !== "" ? ` · ${code}` : null,
+                c.crude ? " · crude" : null,
+              ),
+              " ",
+              el("span", { class: "mono side-path", text: c.path }),
+              " ",
+              copyButton(el, copyCtx, c.path, `the path of the side-product spectrum of ${c.full_id}`, `copy-side:${id}:${index}`),
             );
           }),
         ),

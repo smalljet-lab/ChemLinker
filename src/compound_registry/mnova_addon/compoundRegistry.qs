@@ -16,6 +16,11 @@ A spectrum of a crude product is linked with the box "Crude spectrum" ticked in 
 saved as <ID>_<sample>_crude.mnova and only the place of that file is stored with the compound: no PDF, no
 shift report, no parameters. The catalogue shows just the path.
 
+A spectrum of an undesired side product is linked with the box "Undesired side product" ticked. It is handled
+like a crude spectrum: the document is saved as <ID>_<sample>_side.mnova (..._crude_side.mnova with both
+boxes ticked) and only the place of that file is stored with the compound, no PDF, no shift report, no
+parameters. The catalogue lists the path under "Undesired side product".
+
 "Paste Structure on Spectrum" puts the registered structure of the linked compound on the current page.
 
 "Compound Library..." lists the compounds of the registry (scrollable, with a search field) and opens the
@@ -79,6 +84,7 @@ compoundRegistry.dialogUi = function () {
 		'<item><widget class="QLabel" name="lblFolder"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Preferred"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>' +
 		'</layout></item>' +
 		'<item><widget class="QCheckBox" name="chkCrude"><property name="text"><string>Crude spectrum (only the document is saved and its path shown in the catalogue: no PDF, no report)</string></property></widget></item>' +
+		'<item><widget class="QCheckBox" name="chkSide"><property name="text"><string>Undesired side product (only the document is saved and its path shown in the catalogue: no PDF, no report)</string></property></widget></item>' +
 		'<item><layout class="QHBoxLayout" name="bottomLayout">' +
 		'<item><widget class="QCheckBox" name="chkAuto"><property name="text"><string>Propose automatically when a spectrum is opened</string></property></widget></item>' +
 		'<item><spacer name="sp"><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>' +
@@ -320,9 +326,10 @@ compoundRegistry.candidatesOf = function (aResult) {
 };
 
 /** Shows the candidates and the search field. aNote (HTML) replaces the sentence about the experiment found
-	in the title. aCrude: whether the "Crude spectrum" box starts ticked. Returns the chosen candidate,
-	{search: "typed text"} when the user searched, or null; "crude" of what is returned says whether the box was ticked. */
-compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSearchText, aCrude) {
+	in the title. aCrude, aSide: whether the "Crude spectrum" and the "Undesired side product" box start ticked.
+	Returns the chosen candidate, {search: "typed text"} when the user searched, or null; "crude" and
+	"side_product" of what is returned say whether the boxes were ticked. */
+compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSearchText, aCrude, aSide) {
 	"use strict";
 	var ui = Application.loadUi(compoundRegistry.dialogUi()), w = ui.widgets, i, c, label, chosen = null,
 		shown = Math.min(aCandidates.length, compoundRegistry.maxButtons), refs = [], seen = {};
@@ -389,6 +396,7 @@ compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSe
 	w.lblFolder.text = aFilesFolder ? "Saves to the compound's folder in " + aFilesFolder : "";
 	w.chkAuto.checked = compoundRegistry.autoPropose();
 	w.chkCrude.checked = !!aCrude;
+	w.chkSide.checked = !!aSide;
 	w.pbCancel.clicked.connect(function () { ui.reject(); });
 
 	compoundRegistry.dialog = ui;
@@ -400,15 +408,33 @@ compoundRegistry.choose = function (aText, aCandidates, aFilesFolder, aNote, aSe
 	settings.setValue(compoundRegistry.autoKey, w.chkAuto.checked ? "true" : "false");
 	if (chosen) {
 		chosen.crude = !!w.chkCrude.checked;
+		chosen.side_product = !!w.chkSide.checked;
 	}
 	return chosen;
 };
 
-//! <compound folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum); never the name of another existing file.
+//! True for a link saved with the document only (no PDF, no report): a crude spectrum or one of an undesired side product.
+compoundRegistry.documentOnly = function (aLink) {
+	"use strict";
+	return !!(aLink && (aLink.crude || aLink.side_product));
+};
+
+//! "a crude spectrum", "a spectrum of an undesired side product", both, or "" for a full spectrum.
+compoundRegistry.kindText = function (aLink) {
+	"use strict";
+	if (!compoundRegistry.documentOnly(aLink)) {
+		return "";
+	}
+	return (aLink.crude ? "a crude spectrum" : "a spectrum") + (aLink.side_product ? " of an undesired side product" : "");
+};
+
+/** <compound folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum, ..._side.mnova for one of an
+	undesired side product, ..._crude_side.mnova for both); never the name of another existing file. */
 compoundRegistry.targetPath = function (aDoc, aDir, aCandidate) {
 	"use strict";
 	var dir = compoundRegistry.slashes(aDir),
-		stem = aCandidate.full_id + (aCandidate.match.file_label ? "_" + aCandidate.match.file_label : "") + (aCandidate.crude ? "_crude" : ""),
+		stem = aCandidate.full_id + (aCandidate.match.file_label ? "_" + aCandidate.match.file_label : "") + (aCandidate.crude ? "_crude" : "") +
+			(aCandidate.side_product ? "_side" : ""),
 		path = dir + "/" + stem + ".mnova", n = 1, current = String(aDoc.name || "").replace(/\\/g, "/").toLowerCase();
 	while (File.exists(path) && path.toLowerCase() !== current) {
 		n++;
@@ -438,6 +464,7 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 		smiles: aCandidate.smiles,
 		inchikey: aCandidate.inchikey,
 		crude: !!aCandidate.crude,
+		side_product: !!aCandidate.side_product,
 		linked_at: new Date().toISOString()
 	};
 	att.setMetaData(meta);
@@ -451,15 +478,16 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 		MessageBox.critical("The document could not be saved as\n" + target.path);
 		return "";
 	}
-	if (meta.crude) {
+	if (compoundRegistry.documentOnly(meta)) {
 		problem = compoundRegistry.recordCrude(aDoc, meta, target.path);
 		if (problem) {
-			MessageBox.warning("The document was saved as\n" + target.path + "\nbut the registry did not store it as a crude spectrum of " +
-				aCandidate.full_id + ":\n" + problem);
+			MessageBox.warning("The document was saved as\n" + target.path + "\nbut the registry did not store it as " +
+				compoundRegistry.kindText(meta) + " with " + aCandidate.full_id + ":\n" + problem);
 		}
 	}
 	try {
-		mainWindow.setStatusMessage("Linked to " + aCandidate.full_id + (meta.crude ? " as a crude spectrum" : "") + ", saved as " + target.path);
+		mainWindow.setStatusMessage("Linked to " + aCandidate.full_id + (compoundRegistry.documentOnly(meta) ? " as " + compoundRegistry.kindText(meta) : "") +
+			", saved as " + target.path);
 	} catch (ignore) {}
 	return target.path;
 };
@@ -469,7 +497,7 @@ compoundRegistry.linkAndSave = function (aDoc, aCandidate, aText) {
 	(then the add-on stays silent unless it has something to propose). */
 compoundRegistry.propose = function (aInteractive) {
 	"use strict";
-	var doc = mainWindow.activeDocument, info, link, answer, candidates, chosen, path, note = "", typed = "", crude = false, h = compoundRegistry.html;
+	var doc = mainWindow.activeDocument, info, link, answer, candidates, chosen, path, note = "", typed = "", crude = false, side = false, h = compoundRegistry.html;
 	if (!doc || !doc.isValid()) {
 		if (aInteractive) { MessageBox.information("Open a spectrum first."); }
 		return "";
@@ -479,12 +507,14 @@ compoundRegistry.propose = function (aInteractive) {
 		if (!aInteractive) {
 			return "";
 		}
-		if (MessageBox.question("This document is already linked to " + link.compound_id + (link.crude ? " as a crude spectrum" : "") +
-				".\nLink it again (to another compound, or to change the Crude box)?",
+		if (MessageBox.question("This document is already linked to " + link.compound_id +
+				(compoundRegistry.documentOnly(link) ? " as " + compoundRegistry.kindText(link) : "") +
+				".\nLink it again (to another compound, or to change the Crude or the Undesired side product box)?",
 				MessageBox.Yes, MessageBox.No) !== MessageBox.Yes) {
 			return "";
 		}
 		crude = !!link.crude;
+		side = !!link.side_product;
 	}
 	info = compoundRegistry.documentText(doc);
 	if (!info.count) {
@@ -508,12 +538,13 @@ compoundRegistry.propose = function (aInteractive) {
 		note = "No registered experiment number was found in the title. Search for the experiment number or the compound ID below.";
 	}
 	while (true) {
-		chosen = compoundRegistry.choose(info.text, candidates, answer.result.files_folder, note, typed, crude);
+		chosen = compoundRegistry.choose(info.text, candidates, answer.result.files_folder, note, typed, crude, side);
 		if (!chosen) {
 			compoundRegistry.declined[doc.uuid] = true;
 			return "";
 		}
 		crude = !!chosen.crude;
+		side = !!chosen.side_product;
 		if (!chosen.search) {
 			break;
 		}
@@ -846,25 +877,27 @@ compoundRegistry.spectrumKey = function (aItem, aSeen) {
 };
 
 /** Where the linked document aDoc is saved: a document that already lies in the compound's folder keeps its
-	name; any other gets <folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum). */
+	name; any other gets <folder>/<ID>_<sample>.mnova (..._crude.mnova for a crude spectrum, ..._side.mnova for
+	one of an undesired side product). */
 compoundRegistry.documentPath = function (aDoc, aLink, aFolder) {
 	"use strict";
 	var path = compoundRegistry.slashes(aDoc.name);
 	if (!/\.mnova$/i.test(path) || !File.exists(path) ||
 			path.substring(0, path.lastIndexOf("/")).toLowerCase() !== aFolder.toLowerCase()) {
-		path = compoundRegistry.targetPath(aDoc, aFolder, {core_stereo_id: aLink.core_stereo_id, full_id: aLink.compound_id, crude: !!aLink.crude,
+		path = compoundRegistry.targetPath(aDoc, aFolder, {core_stereo_id: aLink.core_stereo_id, full_id: aLink.compound_id, crude: !!aLink.crude, side_product: !!aLink.side_product,
 			match: {file_label: aLink.file_label || String(aLink.sample || "").replace(/[^A-Za-z0-9.+\-]+/g, "_").substring(0, 60)}}).path;
 	}
 	return path;
 };
 
-/** Stores with the compound that the document saved as aPath holds crude spectra: per spectrum only what
-	names it and the path, no report, no parameters, no PDF. Returns "" or what went wrong. */
+/** Stores with the compound that the document saved as aPath holds crude spectra or spectra of an undesired
+	side product (aLink.crude, aLink.side_product): per spectrum only what names it and the path, no report,
+	no parameters, no PDF. Returns "" or what went wrong. */
 compoundRegistry.recordCrude = function (aDoc, aLink, aPath) {
 	"use strict";
 	var specs = compoundRegistry.spectra(aDoc), payload = [], seen = {}, i, item, answer;
 	for (i = 0; i < specs.length; i++) {
-		item = {crude: true, sample: aLink.sample || "", mnova_file: aPath, title: "", nucleus: "", dimensions: 1};
+		item = {crude: !!aLink.crude, side_product: !!aLink.side_product, sample: aLink.sample || "", mnova_file: aPath, title: "", nucleus: "", dimensions: 1};
 		try { item.title = String(specs[i].title || ""); } catch (e1) {}
 		try { item.nucleus = String(specs[i].nucleus()); } catch (e2) {}
 		try { item.dimensions = specs[i].dimCount; } catch (e3) {}
@@ -875,11 +908,11 @@ compoundRegistry.recordCrude = function (aDoc, aLink, aPath) {
 		return "The document has no NMR spectrum.";
 	}
 	answer = compoundRegistry.runBridge("record", compoundRegistry.jsonAscii({full_id: aLink.compound_id, spectra: payload}),
-		"Saving the crude spectrum with the compound...");
+		"Saving the spectrum with the compound...");
 	return answer.ok ? "" : (answer.error && answer.error.message ? answer.error.message : "unknown error");
 };
 
-/** Saves the linked active document again as a crude spectrum: the document and its path in the registry,
+/** Saves the linked active document again as a crude or side-product spectrum: the document and its path in the registry,
 	nothing else. Returns {mnova, pdf: "", recorded, crude: true, reports: [], problems: [...]} or null when nothing was saved. */
 compoundRegistry.saveCrude = function (aDoc, aLink) {
 	"use strict";
@@ -897,7 +930,7 @@ compoundRegistry.saveCrude = function (aDoc, aLink) {
 	out.mnova = path;
 	problem = compoundRegistry.recordCrude(aDoc, aLink, path);
 	if (problem) {
-		out.problems.push("The registry did not store the crude spectrum: " + problem);
+		out.problems.push("The registry did not store the spectrum: " + problem);
 	} else {
 		out.recorded = true;
 	}
@@ -1000,21 +1033,21 @@ compoundRegistry.saveToCompound = function () {
 			return null;
 		}
 	}
-	if (link.crude) {
-		// a crude spectrum: the document and its path, no PDF and no report (linking just now saved both already)
+	if (compoundRegistry.documentOnly(link)) {
+		// a crude or side-product spectrum: the document and its path, no PDF and no report (linking just now saved both already)
 		result = linked ? {mnova: linked, pdf: "", recorded: true, crude: true, reports: [], problems: []} : compoundRegistry.saveCrude(doc, link);
 		if (!result) {
 			return null;
 		}
-		text = "Saved as a crude spectrum of " + link.compound_id + ":\n" + (result.mnova || "(not saved)") +
-			"\n\nNo PDF and no report are made for a crude spectrum; the catalogue shows only this path." +
-			"\nTo save it as a full spectrum, use Link Spectrum to Compound ID again and untick the Crude box.";
+		text = "Saved as " + compoundRegistry.kindText(link) + " with " + link.compound_id + ":\n" + (result.mnova || "(not saved)") +
+			"\n\nNo PDF and no report are made for " + compoundRegistry.kindText(link) + "; the catalogue shows only this path." +
+			"\nTo save it as a full spectrum, use Link Spectrum to Compound ID again and untick the Crude and the Undesired side product box.";
 		if (result.problems.length) {
 			MessageBox.warning(text + "\n\nProblems:\n- " + result.problems.join("\n- "));
 		} else if (mainWindow.hasGui) {
 			MessageBox.information(text);
 		}
-		try { mainWindow.setStatusMessage("Saved the crude spectrum with " + link.compound_id); } catch (ignore0) {}
+		try { mainWindow.setStatusMessage("Saved " + compoundRegistry.kindText(link) + " with " + link.compound_id); } catch (ignore0) {}
 		return result;
 	}
 	result = compoundRegistry.publish(doc, link);
@@ -1385,6 +1418,7 @@ compoundRegistry.showLink = function () {
 		"\nExperiment: " + link.experiment + ", product " + link.product_index +
 		"\nSample: " + link.sample +
 		(link.crude ? "\nCrude spectrum: yes" : "") +
+		(link.side_product ? "\nUndesired side product: yes" : "") +
 		"\nLinked: " + link.linked_at +
 		"\nFile: " + doc.name);
 };

@@ -402,8 +402,10 @@ registry (``RegistryService.record_spectra``).
              "updated_at", "experiment_code", "title", "comment", "sample",
              "nucleus", "solvent", "experiment", "pulse_sequence",
              "frequency_mhz", "dimensions", "report", "parameters",
-             "mnova_file", "pdf_file", "pdf_available", "crude"}``. ``crude``
-             is true for a spectrum saved with the add-on's "Crude" box: of
+             "mnova_file", "pdf_file", "pdf_available", "crude",
+             "side_product"}``. ``crude`` is true for a spectrum saved with
+             the add-on's "Crude" box and ``side_product`` for one saved with
+             its "Undesired side product" box: of
              such a spectrum only ``mnova_file`` is sent (every other detail
              is null or empty, ``pdf_available`` false) and the page shows
              just that path. Text fields are

@@ -564,8 +564,10 @@ def test_compound_files_with_spectra_and_files(svc, home):
     assert set(first) == {"full_id", "spectrum_key", "updated_at", "experiment_code", "title",
                           "comment", "sample", "nucleus", "solvent", "experiment",
                           "pulse_sequence", "frequency_mhz", "dimensions", "report",
-                          "parameters", "mnova_file", "pdf_file", "pdf_available", "crude"}
+                          "parameters", "mnova_file", "pdf_file", "pdf_available", "crude",
+                          "side_product"}
     assert first["crude"] is False and second["crude"] is False
+    assert first["side_product"] is False and second["side_product"] is False
     assert first["full_id"] == "000001_01_001" and first["experiment_code"] == "ABC-001"
     assert first["report"] == "1H NMR (500 MHz, CDCl3) \u03b4 7.40 (t, 1H)"
     assert "\n" not in first["report"] and "report_html" not in first
@@ -616,6 +618,38 @@ def test_compound_files_shows_only_the_path_of_a_crude_spectrum(svc, home):
     svc.record_spectra("000001_01_001", [spectrum(folder, "S1")])
     (item,) = svc.compound_files("000001_01")["spectra"]
     assert item["crude"] is False and item["report"] and item["pdf_available"] is True
+
+
+@pytest.mark.parametrize("crude", [False, True])
+def test_compound_files_shows_only_the_path_of_a_side_product_spectrum(svc, home, crude):
+    reg(svc)
+    folder = home / "compounds" / "000001_01"
+    side_file = folder / "000001_01_001_S1_side.mnova"
+    side_file.write_bytes(b"mnova")
+    (folder / "000001_01_001_S1.pdf").write_bytes(PDF)
+    marks = {"side_product": True, "crude": True} if crude else {"side_product": True}
+    stored = svc.record_spectra("000001_01_001", [
+        spectrum(folder, "S1", mnova_file=str(side_file), **marks)])
+    data = stored["spectra"][0]["data"]
+    assert data["side_product"] is True and data["mnova_file"] == str(side_file)
+    assert ("crude" in data) is crude
+    assert not {"report", "report_html", "report_kind", "pdf_file", "parameters"} & set(data)
+    (item,) = svc.compound_files("000001_01")["spectra"]
+    assert item["side_product"] is True and item["crude"] is crude
+    assert item["mnova_file"] == str(side_file)
+    assert item["pdf_file"] is None and item["pdf_available"] is False
+    assert item["report"] is None and item["parameters"] == []
+    assert all(item[name] is None for name in ("title", "comment", "sample", "nucleus", "solvent",
+                                         "experiment", "pulse_sequence", "frequency_mhz",
+                                         "dimensions"))
+    with pytest.raises(RegistryError) as info:
+        svc.read_pdf("000001_01", full_id="000001_01_001",
+                     spectrum_key=stored["spectra"][0]["spectrum_key"])
+    assert code_of(info) == "file_unavailable"
+    # saved again as a full spectrum, the record is a full one again
+    svc.record_spectra("000001_01_001", [spectrum(folder, "S1")])
+    (item,) = svc.compound_files("000001_01")["spectra"]
+    assert item["side_product"] is False and item["report"] and item["pdf_available"] is True
 
 
 def test_compound_files_without_folder_or_spectra_creates_nothing(svc, home):
