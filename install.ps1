@@ -29,6 +29,7 @@
         --id-prefix ABC      the first three letters (A-Z) of every ID of a NEW registry (permanent)
         --id-format TEMPLATE full ID template of a NEW registry (permanent)
         --mnova yes|no       install / refresh the MestReNova add-on, or leave it alone
+        --recognition yes|no install / refresh ChemRecogniser (optional, about 2.8 GB), or leave it alone
         --skip-extension     do not build the extension
         --force              replace a browser registration of another installation
         --yes                ask nothing: take every default or previous choice

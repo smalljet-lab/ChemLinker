@@ -705,7 +705,7 @@ describe("compounds page: name from ChemDraw", () => {
     document.body.replaceChildren();
   });
 
-  const editor: StructureEditor = { getMolfile: () => null, clear: () => {}, destroy: () => {} };
+  const editor: StructureEditor = { getMolfile: () => null, setMolfile: () => {}, clear: () => {}, destroy: () => {} };
 
   async function expanded(ping: PingResult) {
     const client = new FakeClient();

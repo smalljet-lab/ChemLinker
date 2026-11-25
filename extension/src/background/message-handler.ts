@@ -1,18 +1,27 @@
 /**
- * Serves messages from exactly two kinds of senders and refuses everything
+ * Serves messages from exactly four kinds of senders and refuses everything
  * else with `not_allowed`:
  *
  *   the site's content script  (sender.url on SITE_ORIGIN): SITE_OPS, and
  *                              `open-compounds` (the panel's "All compounds" link);
- *   the compounds page         (sender.url is this extension's COMPOUNDS_PAGE): PAGE_OPS.
+ *   the compounds page         (sender.url is this extension's COMPOUNDS_PAGE): PAGE_OPS;
+ *   the capture page           (sender.url is this extension's CAPTURE_PAGE): CAPTURE_OPS,
+ *                              and `capture-image` (the screenshot it was opened for);
+ *   the toolbar popup          (sender.url is this extension's POPUP_PAGE): only the two
+ *                              messages `capture-start` and `open-compounds`, no host operation.
+ *
+ * CAPTURE_OPS go to the host through a native-messaging port of their own
+ * (`captureRequest`), so a recognition never holds up the registry operations.
  *
  * Answers every message with a value and never rejects.
  */
 
 import {
+  CAPTURE_OPS,
   PAGE_OPS,
   type BackgroundReply,
   type BackgroundRequest,
+  type CaptureImageReply,
   type HostError,
   type Op,
   type ParamsByOp,
@@ -43,18 +52,44 @@ export interface SenderLike {
   url?: string | undefined;
 }
 
-export type SenderKind = "site" | "page";
+export type SenderKind = "site" | "page" | "capture" | "popup";
 
-/** What the background answers to `open-compounds`. */
+/** The message types that are not host requests, and who may send each. */
+export const MESSAGE_SENDERS: Readonly<Record<string, readonly SenderKind[]>> = {
+  "open-compounds": ["site", "popup"],
+  "capture-start": ["popup"],
+  "capture-image": ["capture"],
+};
+
+/** The host operations of each kind of sender. The popup has none. */
+export const OPS_BY_SENDER: Readonly<Record<SenderKind, readonly string[]>> = {
+  site: SITE_OPS,
+  page: PAGE_OPS,
+  capture: CAPTURE_OPS,
+  popup: [],
+};
+
+/** What the background answers to `open-compounds` and `capture-start`. */
 export type OpenCompoundsReply = { ok: true } | { ok: false; error: HostError };
 
 export interface MessageHandlerDeps {
   runtimeId: string;
   /** `browser.runtime.getURL(COMPOUNDS_PAGE)`. */
   pageUrl: string;
+  /** `browser.runtime.getURL(CAPTURE_PAGE)`. */
+  captureUrl: string;
+  /** `browser.runtime.getURL(POPUP_PAGE)`. */
+  popupUrl: string;
+  /** The registry operations (SITE_OPS, PAGE_OPS). */
   request: <K extends Op>(op: K, params: ParamsByOp[K]) => Promise<BackgroundReply<K>>;
+  /** CAPTURE_OPS, on a host connection of their own. */
+  captureRequest: <K extends Op>(op: K, params: ParamsByOp[K]) => Promise<BackgroundReply<K>>;
   /** Opens COMPOUNDS_PAGE in a new tab. */
   openCompoundsPage: () => Promise<void>;
+  /** Takes the screenshot of the active tab and opens CAPTURE_PAGE for it. */
+  startCapture: () => Promise<OpenCompoundsReply>;
+  /** The screenshot kept under an id, once. */
+  takeScreenshot: (id: unknown) => CaptureImageReply;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -76,11 +111,24 @@ function withoutQuery(url: string): string {
   return cut < 0 ? url : url.slice(0, cut);
 }
 
-/** Who sent the message, or null when it is neither the site's content script nor the compounds page. */
-export function senderKind(sender: SenderLike | undefined, runtimeId: string, pageUrl: string): SenderKind | null {
+/**
+ * Who sent the message, or null when it is none of the four senders. The three
+ * extension pages are told apart by their exact address (query and fragment
+ * aside); an empty address matches nothing.
+ */
+export function senderKind(
+  sender: SenderLike | undefined,
+  runtimeId: string,
+  pageUrl: string,
+  captureUrl: string = "",
+  popupUrl: string = "",
+): SenderKind | null {
   if (!sender || sender.id !== runtimeId || typeof sender.url !== "string") return null;
   if (originOf(sender.url) === SITE_ORIGIN) return "site";
-  if (pageUrl !== "" && withoutQuery(sender.url) === pageUrl) return "page";
+  const url = withoutQuery(sender.url);
+  if (pageUrl !== "" && url === pageUrl) return "page";
+  if (captureUrl !== "" && url === captureUrl) return "capture";
+  if (popupUrl !== "" && url === popupUrl) return "popup";
   return null;
 }
 
@@ -90,17 +138,20 @@ export function refusalReason(
   sender: SenderLike | undefined,
   runtimeId: string,
   pageUrl: string = "",
+  captureUrl: string = "",
+  popupUrl: string = "",
 ): string | null {
   if (!sender || sender.id !== runtimeId) return "The message does not come from this extension.";
-  const kind = senderKind(sender, runtimeId, pageUrl);
-  if (kind === null) return "The message does not come from the Sciformation site or the extension's compounds page.";
+  const kind = senderKind(sender, runtimeId, pageUrl, captureUrl, popupUrl);
+  if (kind === null) return "The message does not come from the Sciformation site or one of the extension's own pages.";
   if (!isRecord(message)) return "Unknown message type.";
-  if (message.type === "open-compounds") {
-    return kind === "site" ? null : "This message is not available here.";
+  if (typeof message.type === "string" && Object.hasOwn(MESSAGE_SENDERS, message.type)) {
+    if (!MESSAGE_SENDERS[message.type]!.includes(kind)) return "This message is not available here.";
+    if (message.type === "capture-image" && typeof message.id !== "string") return "The screenshot id is missing.";
+    return null;
   }
   if (message.type !== "host-request") return "Unknown message type.";
-  const ops = kind === "site" ? SITE_OPS : PAGE_OPS;
-  if (typeof message.op !== "string" || !(ops as readonly string[]).includes(message.op)) return "This operation is not available.";
+  if (typeof message.op !== "string" || !OPS_BY_SENDER[kind].includes(message.op)) return "This operation is not available.";
   if (!isRecord(message.params)) return "The request parameters must be an object.";
   return null;
 }
@@ -109,16 +160,21 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
   return async function handleMessage(
     message: unknown,
     sender: SenderLike | undefined,
-  ): Promise<BackgroundReply | OpenCompoundsReply> {
+  ): Promise<BackgroundReply | OpenCompoundsReply | CaptureImageReply> {
     try {
-      const reason = refusalReason(message, sender, deps.runtimeId, deps.pageUrl);
+      const reason = refusalReason(message, sender, deps.runtimeId, deps.pageUrl, deps.captureUrl, deps.popupUrl);
       if (reason !== null) return { ok: false, error: { code: "not_allowed", message: reason } };
-      if ((message as { type: string }).type === "open-compounds") {
+      const type = (message as { type: string }).type;
+      if (type === "open-compounds") {
         await deps.openCompoundsPage();
         return { ok: true };
       }
+      if (type === "capture-start") return await deps.startCapture();
+      if (type === "capture-image") return deps.takeScreenshot((message as { id: unknown }).id);
       const request = message as BackgroundRequest;
-      return await deps.request(request.op, request.params);
+      // Only the capture page gets this far with a capture operation; those have a host connection of their own.
+      const viaCapture = (CAPTURE_OPS as readonly string[]).includes(request.op);
+      return await (viaCapture ? deps.captureRequest : deps.request)(request.op, request.params);
     } catch (error) {
       return {
         ok: false,

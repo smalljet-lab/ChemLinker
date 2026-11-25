@@ -6,27 +6,66 @@
  * next event.
  */
 
-import { HOST_NAME } from "../shared/protocol";
-import { compoundsPageUrl, createPageOpener, registerToolbarButton } from "./compounds-page";
+import { CAPTURE_PAGE, HOST_NAME, POPUP_PAGE } from "../shared/protocol";
+import {
+  ScreenshotStore,
+  activeTabIsPrivate,
+  createCaptureStarter,
+  createExplanationOpener,
+  registerCaptureCommand,
+  takeScreenshot,
+  type CaptureApi,
+  type CommandsApi,
+} from "./capture";
+import { compoundsPageUrl, createPageOpener } from "./compounds-page";
 import { createMessageHandler, type SenderLike } from "./message-handler";
-import { NativeClient, errorText, type NativePort } from "./native-client";
+import { CAPTURE_IDLE_CLOSE_MS, CAPTURE_OP_TIMEOUTS_MS, NativeClient, errorText, type NativePort } from "./native-client";
 
 /** Named in "could not be reached" errors; only Firefox has runtime.getBrowserInfo. */
 const browserName = typeof browser.runtime.getBrowserInfo === "function" ? "Firefox" : "Chrome";
 
-const client = new NativeClient({
-  connect: () => browser.runtime.connectNative(HOST_NAME) as unknown as NativePort,
-  lastErrorMessage: () => browser.runtime.lastError?.message,
+const connect = () => browser.runtime.connectNative(HOST_NAME) as unknown as NativePort;
+const lastErrorMessage = () => browser.runtime.lastError?.message;
+
+/** The registry operations. */
+const client = new NativeClient({ connect, lastErrorMessage, browserName });
+
+/**
+ * "Capture reaction": a second connection, so a second host process. The host
+ * answers one request at a time and a recognition takes up to minutes; the
+ * panel's lookups must not wait for it. Closed when unused, which ends that
+ * host process and its recognition worker.
+ */
+const captureClient = new NativeClient({
+  connect,
+  lastErrorMessage,
   browserName,
+  opTimeoutsMs: CAPTURE_OP_TIMEOUTS_MS,
+  idleCloseMs: CAPTURE_IDLE_CLOSE_MS,
+  // All capture pages share this port: a short request of one page may wait behind another page's recognition.
+  queued: true,
 });
 
 const openCompoundsPage = createPageOpener({ runtime: browser.runtime, tabs: browser.tabs });
 
+const screenshots = new ScreenshotStore();
+const captureApi = { runtime: browser.runtime, tabs: browser.tabs } as unknown as CaptureApi;
+const startCapture = createCaptureStarter(captureApi, screenshots, {
+  browserName,
+  // Chrome cannot show the capture page in an Incognito window; Firefox can.
+  ...(browserName === "Chrome" ? { isPrivateTab: () => activeTabIsPrivate(captureApi) } : {}),
+});
+
 const handleMessage = createMessageHandler({
   runtimeId: browser.runtime.id,
   pageUrl: compoundsPageUrl({ runtime: browser.runtime }),
+  captureUrl: browser.runtime.getURL(CAPTURE_PAGE),
+  popupUrl: browser.runtime.getURL(POPUP_PAGE),
   request: (op, params) => client.request(op, params),
+  captureRequest: (op, params) => captureClient.request(op, params),
   openCompoundsPage,
+  startCapture,
+  takeScreenshot: (id) => takeScreenshot(screenshots, id),
 });
 
 /**
@@ -50,10 +89,14 @@ function onRuntimeMessage(message: unknown, sender: SenderLike | undefined, send
 
 browser.runtime.onMessage.addListener(onRuntimeMessage);
 
-registerToolbarButton(browser.action, openCompoundsPage);
+// The toolbar button opens the popup (manifest `action.default_popup`); the
+// keyboard shortcut (manifest `commands`) starts a capture directly.
+registerCaptureCommand(browser.commands as CommandsApi | undefined, startCapture, createExplanationOpener(captureApi));
 
 // Firefox fires onSuspend before it unloads the event page; Chrome may stop a
-// service worker without it (the open host port then closes with the worker).
+// service worker without it (the open host ports then close with the worker).
 browser.runtime.onSuspend?.addListener(() => {
   client.close();
+  captureClient.close();
+  screenshots.clear();
 });

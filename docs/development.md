@@ -58,16 +58,28 @@ Outside programs:
 | `files.py`, `spectra.py` | Compound folders and the records of spectra. |
 | `mnova.py`, `mnova_addon/` | The bridge the MestReNova add-on calls (`python -m compound_registry.mnova ...`), the add-on itself (`compoundRegistry.qs`, `compoundRegistry.mui`) and its installer. |
 
+Capture reaction (reading a reaction scheme from a picture):
+
+| Module | Purpose |
+| --- | --- |
+| `recognition.py` | The host side of the four `CAPTURE_OPS`: where the optional part is installed, the worker process (start, time-outs, one restart, idle stop), turning the worker's raw answer into the protocol result with the registry's RDKit (canonical SMILES, warnings), and `reaction_to_chemdraw`. Needs no registry. Its docstring holds the SMILES-or-molfile measurement. |
+| `depiction.py` | The molfile of each recognised molecule (card, structure editor, ChemDraw): the atoms where the picture has them (MolScribe's coordinates with their squeeze undone, evened out like "Clean Up Structure"), a computed layout only when the drawing cannot be used, wedges worked out from the structure and checked by reading the molfile back. Its docstring holds the rules. |
+| `recognition_worker.py` | The worker: ONE standalone file that runs under the Python of the recognition environment, never under the registry's. Loads RxnScribe, MolScribe and EasyOCR once and answers JSON lines. Must not import `compound_registry`. |
+| `recognition_install.py`, `recognition_requirements.txt`, `recognition_overrides.txt` | `compound-registry install-recognition`: creates the environment with uv from the pinned requirements and gets the model files (SHA-256 checked). Everything that touches the machine is in its `Tools`, which tests replace. |
+| `cdxml.py` (`render_reaction`) | Draws reaction steps given as molfiles with the building blocks of the route writer. |
+
 ### The extension, `extension/`
 
-One TypeScript tree, bundled by `build.mjs` (esbuild) into four scripts:
+One TypeScript tree, bundled by `build.mjs` (esbuild) into six scripts:
 
 | Source | Bundle | Runs where |
 | --- | --- | --- |
-| `src/background/` | `background.js` | Firefox background script / Chrome service worker. Holds the one native-messaging port. `message-handler.ts` decides who may send which operation. |
+| `src/background/` | `background.js` | Firefox background script / Chrome service worker. Holds two native-messaging ports (two host processes): one for the registry operations, one for `CAPTURE_OPS`, because the host answers one request at a time and a recognition takes up to minutes. The second port is closed after 11 idle minutes. `message-handler.ts` decides who may send which operation. `capture.ts` takes the screenshot (`tabs.captureVisibleTab`, permission `activeTab`) and keeps it in memory until the capture page fetches it, once. |
 | `src/content/` | `content.js` | Isolated world, in the ELN page. The panel, page reading, state machines. |
 | `src/page/` | `page-bridge.js` | The ELN page's own world. Reads structures and the reaction table from the ELN's ZK widgets. Uses no extension API. |
 | `src/compounds/` | `compounds.js` | The extension's own page (`static/compounds.html`): compound list, yields, import, files, routes, structure editor. |
+| `src/capture/` | `capture.js` | The extension's own page for "Capture reaction" (`static/capture.html?id=...`): the box on the frozen screenshot, the result to check and correct. `geometry.ts` (crop and size arithmetic) and `model.ts` (molecules, roles, steps, reaction SMILES) are pure. |
+| `src/popup/` | `popup.js` | The toolbar button's popup (`static/popup.html`): "Capture reaction" and "Open compound catalogue". Sends the background two messages and no host operation. |
 
 `src/shared/` holds the contracts and no logic: `protocol.ts` (mirror of
 `protocol.py`), `bridge.ts` (content script and page bridge), `import.ts`
@@ -75,13 +87,19 @@ One TypeScript tree, bundled by `build.mjs` (esbuild) into four scripts:
 and the extension version, set at build time).
 
 `static/` holds `manifest.json` (the Firefox manifest and the source of the
-Chrome one), `chrome-key.json`, the compounds page and the icons. `scripts/`
+Chrome one), `chrome-key.json`, the three pages (compounds, capture, popup)
+with their stylesheets and the icons. `scripts/`
 holds the build helpers. Tests are in `extension/tests/`, fixtures in
 `extension/tests/fixtures/`. All fixtures are invented data.
 
 The only runtime dependency is OpenChemLib (the structure editor), bundled
-only into the compounds page. See [browsers.md](browsers.md) for the two
-builds.
+only into the compounds page and the capture page. See
+[browsers.md](browsers.md) for the two builds.
+
+The capture page never touches the web page it shows: there is no content
+script and no injected overlay for it, only the screenshot. Neither the
+screenshot nor anything read from it is logged or stored; `static-checks.test.ts`
+holds these rules (permissions, pages, bundles, where OpenChemLib may be).
 
 ## Setting up
 
@@ -140,6 +158,17 @@ $env:COMPOUND_REGISTRY_LIVE_CHEMDRAW = "1"
 .venv/Scripts/python.exe -m pytest -o addopts="" -q tests/test_chemdraw_live.py tests/test_cdxml_chemdraw_live.py
 ```
 
+The recognition tests need no torch: the worker is replaced by
+`tests/data/fake_recognition_worker.py`, and `install-recognition` runs with
+a fake uv and fake downloads. One test file uses the real models. It is
+skipped unless you ask for it, and needs the optional part installed
+(`compound-registry install-recognition`, about 2.8 GB):
+
+```
+$env:COMPOUND_REGISTRY_LIVE_RECOGNITION = "1"
+.venv/Scripts/python.exe -m pytest -o addopts="" -q tests/test_recognition_live.py
+```
+
 Extension:
 
 ```
@@ -177,9 +206,90 @@ written contract; its docstring describes every operation.
 The host checks who calls it: Firefox passes the add-on ID, Chrome passes the
 extension origin, and the host answers only the IDs in `protocol.py`. The
 background script checks too: only the content script on the ELN address and
-the extension's own compounds page are served, each with its own list of
-operations. `retire` is in the protocol but the extension never sends it; IDs
+the extension's own pages are served, each with its own list: the compounds
+page (`PAGE_OPS`), the capture page (`CAPTURE_OPS` and `capture-image`) and
+the toolbar popup (no host operation, only `capture-start` and
+`open-compounds`). `retire` is in the protocol but the extension never sends it; IDs
 are retired with the CLI only.
+
+**Capture reaction.** The operations of `CAPTURE_OPS` (`recognition_status`,
+`recognize`, `describe_structures`, `reaction_to_chemdraw`) are the only ones
+the host serves without opening a registry: `handle_message` hands them to
+`recognition.py` before it looks at the registry at all, so they also work
+when no registry exists. The host answers one request at a time and a
+recognition takes 10 to 60 seconds, so the extension sends these operations
+over a second connection, i.e. to a second host process; that process owns
+the worker. On that connection `recognize` is the one request the host
+answers from a thread of its own (`host.serve`): the status of a second
+capture page or a structure the user just edited is answered while a
+recognition runs, and the answer of `recognize` is written when it is ready.
+Answers are matched by `id`, never by order. The structure work of the
+capture operations (RDKit) still runs one job at a time.
+
+```
+capture page --runtime.sendMessage--> background.js --second native port--> compound-registry-host
+                                                                                 |  JSON lines on stdin/stdout
+                                                    <recognition home>/env python -I recognition_worker.py
+```
+
+The recognition home is `%LOCALAPPDATA%\CompoundRegistry\recognition`
+(`$COMPOUND_REGISTRY_RECOGNITION_HOME` names another one) with `env/`,
+`models/` and `installed.json`, which the installer writes last. That record
+holds the checksum of the pinned requirements and of the model files; an
+installation made for other pins counts as not installed (the worker comes
+from this package and is written for exactly these libraries), and
+`install-recognition` brings it up to date. The worker
+is started at the first `recognition_status {start: true}` or `recognize`,
+loads the models once, is stopped after 10 minutes without use (a
+`recognition_status {start: true}` counts as use) and when the
+host ends, and ends by itself when its stdin closes (so none is left when the
+host is killed). It returns raw model output; the host makes the SMILES with
+the registry's RDKit, so they are canonical like everywhere else.
+
+The installer deletes nothing on the strength of a folder name: `env/` only
+when it is a Python environment (`pyvenv.cfg`), `models/` as a whole only
+when it created the folder (it leaves a tag file there), otherwise only the
+model files it knows. The environment is built on the Python that uv keeps in
+the project folder (`.python`), so it stops working when the project folder
+is moved; `install-recognition` notices that its Python no longer starts and
+makes the environment again, keeping the model files.
+
+Rules for this part:
+
+- The registry's environment gets no new dependency. torch and the models
+  live in the recognition environment only; `pyproject.toml` and `uv.lock` do
+  not change for it.
+- `recognition_worker.py` stays one standalone file: standard library at the
+  top, model libraries imported inside functions, nothing from
+  `compound_registry` (a test checks this).
+- Nothing read from a picture is logged or put into an error message: no
+  image data, no structure, no text. The worker reports the name of an
+  exception class only. The picture goes to the worker through its stdin; no
+  file is written.
+- `recognition_requirements.txt` pins every package exactly, and
+  `recognition_install.MODEL_FILES` pins every model file by SHA-256. Change
+  them on purpose and run the live test afterwards. RxnScribe and MolScribe
+  are source archives of one commit each, so git is not needed;
+  `recognition_overrides.txt` replaces RxnScribe's own "MolScribe from git,
+  branch main".
+- The tests never start ChemDraw: `reaction_to_chemdraw` obeys
+  `COMPOUND_REGISTRY_NO_OPEN` like `route`.
+- The molfile and the SMILES of a molecule are one structure, stereo
+  included. `depiction.drawing_molfile` reads every molfile back before it
+  returns it; do not hand out a molfile that did not pass (the card would
+  show one thing and Copy give another). The wedge of the picture is kept
+  only when it tells the truth on the final coordinates. A molfile with a
+  wedge carries the chiral flag, and the card (`renderMolfileSvg`) marks
+  every stereocentre as absolute: without that, OpenChemLib treats the
+  molecule as a racemate, and its option that hides the "&1" label also
+  hides the wedge.
+- The worker's answer may gain fields (`seen` came later). The host keeps
+  working when one is missing: tests and tools feed it saved answers.
+- The capture operations skip `chem.normalize` and with it InChI's limit of
+  1023 atoms, and RDKit ends the whole process (stack overflow, nothing to
+  catch) when it writes the SMILES of a chain of about 3000 atoms. Keep
+  `recognition.MAX_STRUCTURE_ATOMS` in front of every SMILES that is written
+  there.
 
 **Mirrored constants.** `extension/src/shared/protocol.ts` repeats the
 constants of `protocol.py` (protocol version, host name, both extension IDs,

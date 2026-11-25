@@ -1,7 +1,11 @@
 /**
  * Client for the native-messaging host.
  *
- * One port, opened on demand and reused. Every request gets a fresh id and is
+ * One port per client, opened on demand and reused. The background has two
+ * clients, so two host processes: one for the registry operations and one for
+ * the "Capture reaction" operations (CAPTURE_OPS). The host answers one
+ * request at a time and a recognition takes up to minutes; on a port of its
+ * own it never holds up the ELN panel's lookups. Every request gets a fresh id and is
  * matched to its response by that id. A request ends in exactly one
  * `BackgroundReply`: the host's answer, `host_timeout`, `host_unavailable` or
  * `host_bad_response`. The promise never rejects.
@@ -12,6 +16,7 @@
 import {
   GENERATE_NAME_TIMEOUT_MS,
   PROTOCOL_VERSION,
+  RECOGNIZE_TIMEOUT_MS,
   type BackgroundReply,
   type HostError,
   type HostRequest,
@@ -33,7 +38,7 @@ export interface NativePort {
 }
 
 export interface NativeClientOptions {
-  /** Opens a new port, e.g. `() => browser.runtime.connectNative(HOST_NAME)`. */
+  /** Opens a new port to the native-messaging host HOST_NAME (the background's index.ts does that). */
   connect: () => NativePort;
   /** Per-request time limit. Default 30 s (the host loads a chemistry library at start). */
   timeoutMs?: number;
@@ -50,6 +55,22 @@ export interface NativeClientOptions {
   log?: (message: string, detail?: unknown) => void;
   /** The browser named in the host_unavailable message; default "Firefox". */
   browserName?: string;
+  /**
+   * Disconnects the port when no request was sent or pending for this long, so
+   * the host process (and what it started) ends. Default: never; the port then
+   * stays open until `close()`.
+   */
+  idleCloseMs?: number;
+  /**
+   * True when requests on this port may wait behind a long one (the capture
+   * port: the host answers one request at a time and a `recognize` takes up to
+   * minutes). A request's time limit then starts when the requests sent before
+   * it have been answered or have run out of time at the latest, not when it is
+   * sent, so a short request queued behind a recognition does not fail with
+   * host_timeout while the host has not even read it. Default false: every
+   * limit starts at once.
+   */
+  queued?: boolean;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -62,8 +83,27 @@ export const OP_TIMEOUTS_MS: Readonly<Partial<Record<Op, number>>> = {
   route: GENERATE_NAME_TIMEOUT_MS,
 };
 
+/**
+ * Time limits of the client for the "Capture reaction" operations: `recognize`
+ * waits for the models to load and for the recognition itself; the other three
+ * get the default. The capture client is `queued`: all capture pages share its
+ * port, so each limit starts when the requests sent before have been answered.
+ */
+export const CAPTURE_OP_TIMEOUTS_MS: Readonly<Partial<Record<Op, number>>> = {
+  recognize: RECOGNIZE_TIMEOUT_MS,
+};
+
+/**
+ * The capture client's port is closed after this long without a request. The
+ * host stops its recognition worker after 10 idle minutes; one minute later
+ * the host process itself is no longer needed either.
+ */
+export const CAPTURE_IDLE_CLOSE_MS = 11 * 60_000;
+
 interface Pending {
   op: Op;
+  /** When this request's time limit ends (ms since the epoch). */
+  deadline: number;
   resolve: (reply: BackgroundReply) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -146,6 +186,7 @@ export class NativeClient {
    */
   private portFatalError: HostError | null = null;
   private readonly pending = new Map<string, Pending>();
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly timeoutMs: number;
   private readonly opTimeoutsMs: Readonly<Partial<Record<Op, number>>>;
   private readonly newId: () => string;
@@ -182,21 +223,27 @@ export class NativeClient {
         resolve(unavailableReply(errorText(error), this.options.browserName));
         return;
       }
+      this.stopIdleTimer();
       let id = this.newId();
       while (this.pending.has(id)) id = this.newId();
       const timeoutMs = this.timeoutFor(op);
+      // On a queued port the host first works off what was sent before.
+      const waitMs = this.options.queued ? this.queueWaitMs() : 0;
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
           this.log(`request ${id} (${op}) timed out`);
           resolve(
             failure(
               "host_timeout",
-              `The local registry program did not answer within ${Math.round(timeoutMs / 1000)} seconds.`,
+              waitMs > 0
+                ? `The local registry program was busy with an earlier request and did not answer within ${Math.round((waitMs + timeoutMs) / 1000)} seconds.`
+                : `The local registry program did not answer within ${Math.round(timeoutMs / 1000)} seconds.`,
             ),
           );
+          this.startIdleTimer();
         }
-      }, timeoutMs);
-      this.pending.set(id, { op, resolve, timer });
+      }, waitMs + timeoutMs);
+      this.pending.set(id, { op, resolve, timer, deadline: Date.now() + waitMs + timeoutMs });
       const message: HostRequest<K> = { id, v: PROTOCOL_VERSION, op, params };
       try {
         port.postMessage(message);
@@ -205,6 +252,13 @@ export class NativeClient {
         this.dropPort(port, errorText(error), true);
       }
     });
+  }
+
+  /** How long the requests already sent may still take, at most. */
+  private queueWaitMs(): number {
+    let latest = 0;
+    for (const entry of this.pending.values()) latest = Math.max(latest, entry.deadline);
+    return Math.max(0, latest - Date.now());
   }
 
   /** Disconnects the port (event page suspend); pending requests fail. */
@@ -228,6 +282,25 @@ export class NativeClient {
     this.pending.delete(id);
     clearTimeout(entry.timer);
     entry.resolve(reply);
+    this.startIdleTimer();
+  }
+
+  private stopIdleTimer(): void {
+    if (this.idleTimer !== null) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  /** Starts the idle countdown when nothing is pending on an open port. */
+  private startIdleTimer(): void {
+    this.stopIdleTimer();
+    const idleCloseMs = this.options.idleCloseMs;
+    if (idleCloseMs === undefined || this.port === null || this.pending.size > 0) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.pending.size === 0) this.close("it was not used for a while");
+    }, idleCloseMs);
+    // Under Node (tests) a waiting timer must not keep the process alive; browsers return a number.
+    (this.idleTimer as { unref?: () => void }).unref?.();
   }
 
   private failAll(reply: BackgroundReply): void {
@@ -244,6 +317,7 @@ export class NativeClient {
   private dropPort(port: NativePort, reason: string, preferHostError = false): void {
     if (this.port !== port) return;
     this.port = null;
+    this.stopIdleTimer();
     try {
       port.disconnect();
     } catch {
@@ -295,6 +369,7 @@ export class NativeClient {
   private onDisconnect(port: NativePort, eventPort: NativePort | undefined): void {
     if (port !== this.port) return;
     this.port = null;
+    this.stopIdleTimer();
     const reason =
       eventPort?.error?.message || port.error?.message || this.options.lastErrorMessage?.() || "the connection was closed";
     this.log(`native port disconnected: ${reason}`);

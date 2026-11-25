@@ -102,6 +102,25 @@ class Mnova:
         return {"replaced": self.state["installed"], "scripts_dir": "the-scripts-folder"}
 
 
+class Recogniser:
+    """Stands in for the optional ChemRecogniser: nothing is downloaded."""
+
+    def __init__(self, *, installed=False, home=None, problem=None, fail=False):
+        self.state = {"installed": installed, "home": home, "problem": problem}
+        self.fail = fail
+        self.installs = 0
+
+    def status(self):
+        return dict(self.state)
+
+    def install(self, say):
+        if self.fail:
+            raise RegistryError("the download failed", code="recognition_install_failed")
+        self.installs += 1
+        say("  (progress of the fake download)")
+        return {"home": self.state["home"]}
+
+
 def create_registry(path: Path, batches: int = 0) -> Path:
     with RegistryService.open(path) as svc:
         for i in range(batches):
@@ -166,10 +185,13 @@ class Run:
     """One wizard run with every outside part replaced."""
 
     def __init__(self, target, root, *answers, node=True, npm=None, mnova=None, can_ask=True,
-                 **env):
+                 recogniser=None, **env):
         self.script = Script(*answers)
         self.npm = npm or Npm()
         self.mnova = mnova or Mnova()
+        self.recogniser = recogniser or Recogniser()
+        env.setdefault("recognition_status", self.recogniser.status)
+        env.setdefault("recognition_install", self.recogniser.install)
         tools = {"node": "node-exe", "npm": "npm-exe"} if node else {}
         self.env = Environment(
             ask=self.script.ask, say=self.script.say, can_ask=can_ask, target=target,
@@ -177,6 +199,9 @@ class Run:
             mnova_status=self.mnova.status, mnova_install=self.mnova.install, **env)
 
     def __call__(self, **options) -> int:
+        # The ChemRecogniser question has tests of its own; everywhere else it
+        # is answered in advance, so that the scripted answers keep their order.
+        options.setdefault("recognition", "no")
         return run_setup(Options(**options), self.env)
 
     @property
@@ -1164,3 +1189,76 @@ def test_command_help_lists_every_option(command):
         assert option in out
     code, out, _ = command("--help")
     assert "setup" in out and "host-status" in out
+
+
+# --------------------------------------------------------------------------- ChemRecogniser (optional)
+
+def _first_run(target, root, *answers, recogniser=None, **options):
+    #          folder  create  prefix  format-ok  browser  ELN  [recogniser]  continue
+    run = Run(target, root, "", "y", "ABC", "", "", "", *answers, recogniser=recogniser)
+    options.setdefault("recognition", None)
+    return run, run(**options)
+
+
+def test_the_installer_asks_for_chemrecogniser_and_says_its_size(target, root):
+    run, code = _first_run(target, root, "", "")            # Enter = the default = no
+    assert code == 0
+    question = "Install ChemRecogniser (about 2.8 GB)? [y/N]: "
+    assert run.script.prompts[-2:] == [question, "Continue? [Y/n]: "]
+    assert "Size of the install: about 2.8 GB on disk" in run.text
+    assert run.recogniser.installs == 0
+    assert "install ChemRecogniser" not in run.text         # not in the plan
+    assert "compound-registry install-recognition" in run.text      # how to add it later
+
+
+def test_chemrecogniser_is_installed_when_the_user_says_yes(target, root):
+    run, code = _first_run(target, root, "y", "")
+    assert code == 0 and run.recogniser.installs == 1
+    assert "  - install ChemRecogniser (or bring it up to date): about 2.8 GB on disk" in run.text
+    assert "(progress of the fake download)" in run.text
+    assert "ChemRecogniser is installed." in run.text
+    assert "is not installed" not in run.text               # no "install it later" hint
+
+
+def test_nothing_is_downloaded_when_the_user_stops_at_continue(target, root):
+    run = Run(target, root, "", "y", "ABC", "", "", "", "y", "n")
+    with pytest.raises(Exception, match="Stopped before anything was changed"):
+        run(recognition=None)
+    assert run.recogniser.installs == 0
+
+
+def test_an_installed_chemrecogniser_is_offered_for_an_update(target, root, tmp_path):
+    there = Recogniser(installed=True, home=str(tmp_path))
+    run, code = _first_run(target, root, "", "", recogniser=there)
+    assert code == 0 and there.installs == 1                # default is yes when it is there
+    assert run.script.asked("Bring ChemRecogniser up to date? [Y/n]")
+
+
+def test_a_failed_chemrecogniser_install_does_not_fail_the_installation(target, root):
+    run, code = _first_run(target, root, "y", "", recogniser=Recogniser(fail=True))
+    assert code == 0
+    assert "warning: ChemRecogniser was not installed: the download failed" in run.text
+    assert "Everything else is installed." in run.text
+
+
+@pytest.mark.parametrize("options, installed, installs", [
+    ({"yes": True, "create_registry": True}, False, 0),     # --yes never downloads 2.8 GB
+    ({"yes": True, "create_registry": True}, True, 0),
+    ({"yes": True, "create_registry": True, "recognition": "yes"}, False, 1),
+    ({"recognition": "no"}, True, 0),
+])
+def test_chemrecogniser_without_a_question(target, root, tmp_path, options, installed, installs):
+    there = Recogniser(installed=installed, home=str(tmp_path))
+    answers = () if options.get("yes") else ("", "y", "ABC", "", "", "", "")
+    run = Run(target, root, *answers, recogniser=there)
+    assert run(**options) == 0
+    assert there.installs == installs
+    assert not run.script.asked("ChemRecogniser")
+
+
+def test_dry_run_only_says_what_would_be_installed(target, root, tmp_path):
+    there = Recogniser(home=str(tmp_path / "recognition"))
+    run = Run(target, root, recogniser=there)
+    assert run(yes=True, create_registry=True, recognition="yes", dry_run=True) == 0
+    assert there.installs == 0
+    assert "Would install ChemRecogniser (about 2.8 GB) into" in run.text

@@ -1,0 +1,3 @@
+# See recognition_requirements.txt: RxnScribe's own requirement "MolScribe from
+# git, branch main" is replaced by the source archive of the tested commit.
+molscribe @ https://github.com/thomas0809/MolScribe/archive/7296a30413eb55436702011efdff78131f66d162.zip

@@ -68,6 +68,32 @@ export const MAX_REACTION_NUMBER = 1e12;
 /** `route`: the document text is returned only up to this size. */
 export const MAX_ROUTE_CDXML_CHARS = 700_000;
 
+/**
+ * Keep in step with protocol.py ("Capture reaction"). `recognize`: `image` is
+ * base64 of a PNG of at most this many characters, so that the whole request
+ * stays under the host's 1 MiB frame limit.
+ */
+export const MAX_IMAGE_BASE64_CHARS = 900_000;
+/** `recognize`: a picture must be at least / at most this many pixels wide and high. */
+export const MIN_IMAGE_SIDE = 16;
+export const MAX_IMAGE_SIDE = 8000;
+/** `recognize` returns at most this many molecules. */
+export const MAX_RECOGNITION_MOLECULES = 60;
+/** `describe_structures`: at most this many structures per request. */
+export const MAX_DESCRIBE_STRUCTURES = 50;
+/** `reaction_to_chemdraw`: limits of `steps`. */
+export const MAX_CHEMDRAW_STEPS = 12;
+/** Per list of a step: reactants, agents, products. */
+export const MAX_CHEMDRAW_STEP_MOLECULES = 10;
+/** Per step; each line at most MAX_REACTION_TEXT characters. */
+export const MAX_CHEMDRAW_CONDITION_LINES = 20;
+/**
+ * The host answers `recognize` within RECOGNIZE_TIMEOUT_S (270 s in
+ * protocol.py; loading the models can take minutes the first time); wait this
+ * long for `recognize`.
+ */
+export const RECOGNIZE_TIMEOUT_MS = 300_000;
+
 export type Op =
   | "ping"
   | "analyze"
@@ -84,7 +110,11 @@ export type Op =
   | "read_pdf"
   | "set_reaction"
   | "route"
-  | "set_limiting";
+  | "set_limiting"
+  | "recognition_status"
+  | "recognize"
+  | "describe_structures"
+  | "reaction_to_chemdraw";
 
 /** Modes the user may choose. */
 export type ModeOverride = "abs" | "rac" | "rel" | "undefined";
@@ -326,6 +356,98 @@ export interface SetLimitingParams {
   row: number | null;
 }
 
+// "Capture reaction" (see protocol.py, "Capture reaction"). Keep the lists in step with protocol.py.
+
+/** `mode` of `recognize`: a reaction scheme, or a picture of one molecule. */
+export const RECOGNITION_MODES = ["reaction", "molecule"] as const;
+export type RecognitionMode = (typeof RECOGNITION_MODES)[number];
+
+/**
+ * `state` of `recognition_status`: not_installed; stopped (installed, no worker
+ * running); loading (worker started, models loading); ready; failed (the
+ * worker could not be started or died while loading).
+ */
+export const RECOGNITION_STATES = ["not_installed", "stopped", "loading", "ready", "failed"] as const;
+export type RecognitionState = (typeof RECOGNITION_STATES)[number];
+
+/**
+ * `warnings` of a molecule, computed by the host with the registry's RDKit:
+ *   unparsable             the structure could not be read (`smiles` null)
+ *   placeholder            contains a dummy atom / R group
+ *   isotope                contains an isotope label (often a misread)
+ *   unusual_element        contains an element that is rare in organic synthesis (often a misread)
+ *   stereo                 has a stereocentre (with or without a wedge) or a double bond that is or could be E/Z: check the wedges and the geometry
+ *   charged_or_salt        has charges or several fragments: check the counter-ion
+ *   low_confidence         the model's confidence is low (`recognize` only)
+ *   duplicate              the same structure (the same `smiles`) appears more than once in the picture (`recognize` only)
+ *   smiles_molfile_differ  the model's SMILES and molfile describe different structures; an abbreviation the SMILES has expanded does not count (`recognize` only)
+ */
+export const MOLECULE_WARNING_CODES = [
+  "unparsable", "placeholder", "isotope", "unusual_element", "stereo", "charged_or_salt", "low_confidence", "duplicate",
+  "smiles_molfile_differ",
+] as const;
+export type MoleculeWarning = (typeof MOLECULE_WARNING_CODES)[number];
+
+/** The molecule warnings `describe_structures` can report: those that can be told from one structure alone. */
+export const STRUCTURE_WARNING_CODES = [
+  "unparsable", "placeholder", "isotope", "unusual_element", "stereo", "charged_or_salt",
+] as const satisfies readonly MoleculeWarning[];
+export type StructureWarning = (typeof STRUCTURE_WARNING_CODES)[number];
+
+/**
+ * `warnings` of a `recognize` result:
+ *   no_molecules          no molecule was found in the picture
+ *   no_reaction           mode "reaction": molecules were found but no reaction
+ *   unassigned_molecules  mode "reaction": a reaction was found, and some molecules are in none (a step may have been missed)
+ *   truncated             more than MAX_RECOGNITION_MOLECULES molecules were found; the rest was left out
+ */
+export const RECOGNITION_WARNING_CODES = ["no_molecules", "no_reaction", "unassigned_molecules", "truncated"] as const;
+export type RecognitionWarning = (typeof RECOGNITION_WARNING_CODES)[number];
+
+/**
+ * Whether the optional recognition part is installed and whether its worker
+ * is running. With `start: true` the host starts the worker when it is
+ * installed and answers at once; the models load in the background. Needs no
+ * registry, like every operation of CAPTURE_OPS.
+ */
+export interface RecognitionStatusParams {
+  /** Default false. */
+  start?: boolean | null;
+}
+
+/** Read a drawn reaction scheme (or one molecule) from a picture. Everything runs on this PC. */
+export interface RecognizeParams {
+  /** Base64 of a PNG (no "data:" prefix), at most MAX_IMAGE_BASE64_CHARS characters. */
+  image: string;
+  mode: RecognitionMode;
+}
+
+/**
+ * The canonical SMILES and the warnings of structures the user drew or
+ * edited, from the registry's RDKit. One answer per structure, in order.
+ */
+export interface DescribeStructuresParams {
+  /** 1 to MAX_DESCRIBE_STRUCTURES. */
+  structures: StructureInput[];
+}
+
+/** One reaction step to draw. A step needs at least one reactant or product. */
+export interface ChemdrawStep {
+  /** Molfiles, at most MAX_CHEMDRAW_STEP_MOLECULES per list. */
+  reactants: string[];
+  /** Drawn over the arrow. Default none. */
+  agents?: string[] | null;
+  products: string[];
+  /** Lines written at the arrow: one line of text each, at most MAX_REACTION_TEXT characters, at most MAX_CHEMDRAW_CONDITION_LINES. Default none. */
+  conditions?: string[] | null;
+}
+
+/** Write the steps as one ChemDraw file in the user's temporary folder and open it. */
+export interface ReactionToChemdrawParams {
+  /** 1 to MAX_CHEMDRAW_STEPS, drawn as consecutive steps. */
+  steps: ChemdrawStep[];
+}
+
 export interface ParamsByOp {
   ping: PingParams;
   analyze: AnalyzeParams;
@@ -342,6 +464,10 @@ export interface ParamsByOp {
   set_reaction: SetReactionParams;
   route: RouteParams;
   set_limiting: SetLimitingParams;
+  recognition_status: RecognitionStatusParams;
+  recognize: RecognizeParams;
+  describe_structures: DescribeStructuresParams;
+  reaction_to_chemdraw: ReactionToChemdrawParams;
 }
 
 // ------------------------------------------------------------------ results
@@ -878,6 +1004,88 @@ export interface RouteResult {
   warnings: string[];
 }
 
+export interface RecognitionStatusResult {
+  /** True when the recognition environment and the model files are in place. */
+  installed: boolean;
+  state: RecognitionState;
+  /** Plain text for the user: how to install it, or why it failed. */
+  detail?: string;
+  /** How long loading took ("ready") or has taken so far ("loading"). */
+  load_seconds?: number;
+}
+
+/** [x0, y0, x1, y1] in pixels of the picture as sent (whole numbers, x0 < x1, y0 < y1). */
+export type PixelBox = [number, number, number, number];
+
+/** One molecule found in the picture. A draft: wrong answers often look valid. */
+export interface RecognizedMolecule {
+  /** 1, 2, 3, ... in list order. */
+  n: number;
+  box: PixelBox;
+  /** Canonical SMILES from the registry's RDKit; a placeholder (R group) is "*". Null when unreadable. */
+  smiles: string | null;
+  /**
+   * V2000 molfile with 2D coordinates, or null: the structure of `smiles` (stereo included: wedges, and
+   * the chiral flag when there is one), with its atoms where the picture has them whenever the drawing
+   * could be used.
+   */
+  molfile: string | null;
+  /** The model's own value from 0 to 1, or null. */
+  confidence: number | null;
+  warnings: MoleculeWarning[];
+}
+
+/** One block of text at a reaction arrow. Formulas are often misread. */
+export interface RecognizedCondition {
+  box: PixelBox;
+  /** The text read, one item per line. */
+  lines: string[];
+}
+
+/** One reaction step. The lists hold molecule numbers (`n`); a molecule may be in several steps. */
+export interface RecognizedReaction {
+  reactants: number[];
+  /** The molecules drawn over or under the arrow. */
+  agents: number[];
+  products: number[];
+  conditions: RecognizedCondition[];
+  /**
+   * "reactants>agents>products" from the molecules' SMILES, each part joined
+   * with "." (agents without SMILES left out); null when a reactant or product
+   * has no SMILES or the step has neither reactants nor products.
+   */
+  reaction_smiles: string | null;
+}
+
+export interface RecognizeResult {
+  /** Pixels of the picture as received. */
+  width: number;
+  height: number;
+  /** Every molecule found, also those in no reaction; at most MAX_RECOGNITION_MOLECULES. */
+  molecules: RecognizedMolecule[];
+  /** In reading order. Always empty for mode "molecule". */
+  reactions: RecognizedReaction[];
+  /** Numbers of the molecules that are in no reaction. */
+  unassigned: number[];
+  /** How long the recognition took. */
+  seconds: number;
+  warnings: RecognitionWarning[];
+}
+
+export interface DescribeStructuresResult {
+  /** One per structure sent, in the same order. Unreadable: `{ smiles: null, warnings: ["unparsable"] }`. */
+  structures: { smiles: string | null; warnings: StructureWarning[] }[];
+}
+
+export interface ReactionToChemdrawResult {
+  /** The file written (in the user's temporary folder). */
+  path: string;
+  /** True when the PC was asked to open the file. */
+  opened: boolean;
+  /** Why it was not opened, in plain words. */
+  message?: string;
+}
+
 export interface ResultByOp {
   ping: PingResult;
   analyze: AnalyzeResult;
@@ -894,6 +1102,10 @@ export interface ResultByOp {
   set_reaction: SetReactionResult;
   route: RouteResult;
   set_limiting: SetLimitingResult;
+  recognition_status: RecognitionStatusResult;
+  recognize: RecognizeResult;
+  describe_structures: DescribeStructuresResult;
+  reaction_to_chemdraw: ReactionToChemdrawResult;
 }
 
 // ------------------------------------------------------------------ envelope
@@ -916,6 +1128,12 @@ export interface HostError {
 export const YIELD_MISMATCH = "yield_mismatch";
 /** `read_pdf`: no such file, not a PDF, or too large. */
 export const FILE_UNAVAILABLE = "file_unavailable";
+/** `recognize`: the optional recognition part is not installed (the message names the command). */
+export const RECOGNITION_NOT_INSTALLED = "recognition_not_installed";
+/** `recognize`: the worker could not be started, died, gave no answer in time or reported a model error. */
+export const RECOGNITION_FAILED = "recognition_failed";
+/** `recognize`: `image` is not base64 of a PNG, or the picture has an unusable size. */
+export const IMAGE_INVALID = "image_invalid";
 
 export type HostResponse<K extends Op = Op> =
   | { id: string | number | null; ok: true; result: ResultByOp[K] }
@@ -935,6 +1153,8 @@ export const REGISTRY_MISSING = "registry_missing";
  *   host_timeout       no answer within the time limit
  *   host_bad_response  an answer that does not follow the protocol
  *   not_allowed        message from a context the background does not serve
+ *   capture_failed     "capture-start": the active tab could not be captured
+ *   capture_expired    "capture-image": no screenshot is kept under that id (any more)
  * Registry and host codes are listed in errors.py and protocol.py.
  */
 
@@ -968,6 +1188,55 @@ export interface OpenCompoundsRequest {
 export const PAGE_OPS: readonly Op[] = [
   "ping", "find", "compounds", "set_name", "generate_name", "yields", "compound_files", "read_pdf", "route", "set_limiting",
 ];
+
+/**
+ * The extension's own page for "Capture reaction" (`dist/capture.html`). The
+ * background opens it as `capture.html?id=<capture id>` after it took the
+ * screenshot of the active tab.
+ */
+export const CAPTURE_PAGE = "capture.html";
+
+/** The toolbar button's popup (`dist/popup.html`). */
+export const POPUP_PAGE = "popup.html";
+
+/**
+ * The operations the background serves to CAPTURE_PAGE, and to nobody else.
+ * Keep in step with CAPTURE_OPS in protocol.py: the host serves exactly these
+ * without a registry.
+ */
+export const CAPTURE_OPS = [
+  "recognition_status", "recognize", "describe_structures", "reaction_to_chemdraw",
+] as const satisfies readonly Op[];
+export type CaptureOp = (typeof CAPTURE_OPS)[number];
+
+/**
+ * Sent by the popup (and nothing else): the background takes a screenshot of
+ * the active tab, keeps it in memory under a random id and opens CAPTURE_PAGE
+ * with that id in a new tab. Answer: `{ ok: true }` or `{ ok: false, error }`
+ * (code CAPTURE_FAILED when the tab cannot be captured).
+ */
+export interface CaptureStartRequest {
+  type: "capture-start";
+}
+
+/**
+ * Sent by CAPTURE_PAGE (and nothing else): the screenshot kept under `id`.
+ * Answer: CaptureImageReply. The background keeps a screenshot only for a
+ * short time; after that the code is CAPTURE_EXPIRED.
+ */
+export interface CaptureImageRequest {
+  type: "capture-image";
+  /** The `id` of the page's own address. */
+  id: string;
+}
+
+export type CaptureImageReply =
+  | { ok: true; result: { /** A "data:image/png;base64,..." URL, in device pixels. */ image: string } }
+  | { ok: false; error: HostError };
+
+/** Extension-side error codes of the two capture messages (the host never sends them). */
+export const CAPTURE_FAILED = "capture_failed";
+export const CAPTURE_EXPIRED = "capture_expired";
 
 /** What the background answers: never rejects, errors are values. */
 export type BackgroundReply<K extends Op = Op> =

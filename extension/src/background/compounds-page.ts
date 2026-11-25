@@ -1,7 +1,7 @@
 /**
  * Opening the extension's compounds page: from the panel's "All compounds"
- * link (an `open-compounds` message) and from the toolbar button. Both open a
- * new tab with `tabs.create`, which needs no permission.
+ * link and from the toolbar popup (both send an `open-compounds` message). It
+ * opens a new tab with `tabs.create`, which needs no permission.
  */
 
 import { COMPOUNDS_PAGE } from "../shared/protocol";
@@ -9,10 +9,6 @@ import { COMPOUNDS_PAGE } from "../shared/protocol";
 export interface PageOpenerApi {
   runtime: { getURL(path: string): string };
   tabs: { create(properties: { url: string }): Promise<unknown> };
-}
-
-export interface ToolbarAction {
-  onClicked: { addListener(listener: () => void): void };
 }
 
 /**
@@ -28,13 +24,4 @@ export function createPageOpener(api: PageOpenerApi): () => Promise<void> {
   return async () => {
     await api.tabs.create({ url: compoundsPageUrl(api) });
   };
-}
-
-/** The toolbar button (manifest `action` without a popup) opens the page. */
-export function registerToolbarButton(action: ToolbarAction, open: () => Promise<void>): void {
-  action.onClicked.addListener(() => {
-    open().catch(() => {
-      // Nothing to show it in: a toolbar click has no page of its own.
-    });
-  });
 }

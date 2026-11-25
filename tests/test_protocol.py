@@ -362,7 +362,8 @@ def test_constants_are_consistent():
     assert set(protocol.OPS) == {"ping", "analyze", "register", "retire", "find", "compounds",
                                  "set_name", "generate_name", "set_yield", "yields",
                                  "compound_files", "read_pdf", "set_reaction", "route",
-                                 "set_limiting"}
+                                 "set_limiting", "recognition_status", "recognize",
+                                 "describe_structures", "reaction_to_chemdraw"}
     assert "files_folder" in protocol.PING_RESULT_KEYS
     assert protocol.YIELD_KINDS == ("isolated", "analytical")
     assert 1 <= protocol.DEFAULT_YIELD_PAGE_SIZE <= protocol.MAX_YIELD_PAGE_SIZE
@@ -557,3 +558,226 @@ def test_safe_urls(url):
 ])
 def test_unsafe_urls(url):
     assert not is_safe_url(url)
+
+
+# --------------------------------------------------------------------------- capture reaction
+
+MOLFILE = "\n  invented\n\n  1  0  0  0  0  0  0  0  0  0999 V2000\n" \
+          "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\nM  END\n"
+
+
+def capture(op: str, **params) -> dict:
+    return {"id": "r-1", "v": 1, "op": op, "params": params}
+
+
+def test_capture_constants():
+    assert protocol.CAPTURE_OPS == ("recognition_status", "recognize", "describe_structures",
+                                    "reaction_to_chemdraw")
+    assert set(protocol.CAPTURE_OPS) <= set(protocol.OPS)
+    # The largest picture, as base64 in a request, fits one frame with room to spare.
+    assert protocol.MAX_IMAGE_BASE64_CHARS + 1000 < protocol.MAX_REQUEST_BYTES
+    assert protocol.MAX_IMAGE_BASE64_CHARS % 4 == 0
+    assert 1 <= protocol.MIN_IMAGE_SIDE < protocol.MAX_IMAGE_SIDE
+    assert protocol.RECOGNITION_MODES == ("reaction", "molecule")
+    assert protocol.RECOGNITION_STATES == ("not_installed", "stopped", "loading", "ready",
+                                           "failed")
+    assert protocol.MOLECULE_WARNING_CODES == (
+        "unparsable", "placeholder", "isotope", "unusual_element", "stereo", "charged_or_salt",
+        "low_confidence", "duplicate", "smiles_molfile_differ")
+    assert protocol.STRUCTURE_WARNING_CODES == protocol.MOLECULE_WARNING_CODES[:6]
+    assert protocol.RECOGNITION_WARNING_CODES == ("no_molecules", "no_reaction",
+                                                  "unassigned_molecules", "truncated")
+    for code in ("recognition_not_installed", "recognition_failed", "image_invalid"):
+        assert code in protocol.HOST_ERROR_CODES
+    assert protocol.RECOGNIZE_TIMEOUT_S == 270
+    assert (protocol.MAX_DESCRIBE_STRUCTURES, protocol.MAX_CHEMDRAW_STEPS) == (50, 12)
+    assert protocol.MAX_CHEMDRAW_STEP_MOLECULES >= 1 and protocol.MAX_CHEMDRAW_CONDITION_LINES >= 1
+    assert protocol.MAX_RECOGNITION_MOLECULES >= 1
+    assert protocol.CHEMDRAW_STEP_KEYS == ("reactants", "agents", "products", "conditions")
+
+
+def test_recognition_status():
+    assert parse_request(capture("recognition_status")).params == {"start": False}
+    assert parse_request(capture("recognition_status", start=None)).params == {"start": False}
+    assert parse_request(capture("recognition_status", start=True)).params == {"start": True}
+    assert parse_request({"id": 1, "v": 1, "op": "recognition_status"}).params == {"start": False}
+
+
+@pytest.mark.parametrize("params", [{"start": 1}, {"start": "true"}, {"start": []},
+                                    {"start": True, "mode": "reaction"}, {"image": "AAAA"}])
+def test_recognition_status_rejected(params):
+    rejected(capture("recognition_status", **params))
+
+
+def test_recognize():
+    r = parse_request(capture("recognize", image="iVBORw0KGgo=", mode="reaction"))
+    assert r.op == "recognize" and r.params == {"image": "iVBORw0KGgo=", "mode": "reaction"}
+    assert parse_request(capture("recognize", image="AAAA", mode="molecule")).params["mode"] \
+        == "molecule"
+
+
+def test_recognize_image_at_the_limit_is_accepted_and_one_more_is_not():
+    image = "A" * protocol.MAX_IMAGE_BASE64_CHARS
+    assert parse_request(capture("recognize", image=image, mode="reaction")).params["image"] \
+        is image
+    err = rejected(capture("recognize", image=image + "A", mode="reaction"))
+    assert "too long" in err.message and len(err.message) < 300      # never quotes the image
+
+
+def test_recognize_does_not_judge_the_content_of_the_image():
+    # Whether it is base64 of a PNG is the host's check (image_invalid), not bad_request.
+    assert parse_request(capture("recognize", image="not base64 !", mode="reaction")).params[
+        "image"] == "not base64 !"
+
+
+@pytest.mark.parametrize("params", [
+    {"mode": "reaction"},                                  # no image
+    {"image": None, "mode": "reaction"},
+    {"image": "", "mode": "reaction"},
+    {"image": 12, "mode": "reaction"},
+    {"image": ["AAAA"], "mode": "reaction"},
+    {"image": {"data": "AAAA"}, "mode": "reaction"},
+    {"image": "AAAA"},                                     # no mode
+    {"image": "AAAA", "mode": None},
+    {"image": "AAAA", "mode": "scheme"},
+    {"image": "AAAA", "mode": "Reaction"},
+    {"image": "AAAA", "mode": 1},
+    {"image": "AAAA", "mode": "reaction", "start": True},  # unknown key
+    {"image": "AAAA", "mode": "reaction", "width": 100},
+])
+def test_recognize_rejected(params):
+    rejected(capture("recognize", **params))
+
+
+def test_describe_structures():
+    r = parse_request(capture("describe_structures",
+                              structures=[{"smiles": "  CCO "}, {"molfile": MOLFILE},
+                                          {"molfile": None, "smiles": "c1ccccc1"}]))
+    assert r.params == {"structures": [{"molfile": None, "smiles": "CCO"},
+                                       {"molfile": MOLFILE, "smiles": None},
+                                       {"molfile": None, "smiles": "c1ccccc1"}]}
+
+
+def test_describe_structures_count_limits():
+    full = [{"smiles": "C"}] * protocol.MAX_DESCRIBE_STRUCTURES
+    assert len(parse_request(capture("describe_structures", structures=full))
+               .params["structures"]) == protocol.MAX_DESCRIBE_STRUCTURES
+    rejected(capture("describe_structures", structures=full + [{"smiles": "C"}]))
+    rejected(capture("describe_structures", structures=[]))
+
+
+@pytest.mark.parametrize("structures", [
+    None, "CCO", {"smiles": "CCO"}, 3,
+    ["CCO"], [None], [[]],
+    [{}],                                                  # neither
+    [{"molfile": MOLFILE, "smiles": "C"}],                 # both
+    [{"smiles": None}], [{"molfile": None, "smiles": None}],
+    [{"smiles": 1}], [{"molfile": ["x"]}],
+    [{"smiles": "   "}], [{"molfile": "\n\n"}],
+    [{"smiles": "C\nC"}],                                  # a SMILES is one line
+    [{"molfile": "a\x00b"}],
+    [{"smiles": "C", "name": "x"}],                        # unknown key
+    [{"smiles": "C"}, {"smiles": 5}],                      # a later one is checked too
+    [{"smiles": "C" * (MAX_STRUCTURE_CHARS + 1)}],
+])
+def test_describe_structures_rejected(structures):
+    rejected(capture("describe_structures", structures=structures))
+
+
+def test_describe_structures_needs_the_key_and_refuses_others():
+    rejected(capture("describe_structures"))
+    rejected(capture("describe_structures", structures=[{"smiles": "C"}], smiles="C"))
+
+
+def step(**changes) -> dict:
+    out = {"reactants": [MOLFILE], "products": [MOLFILE]}
+    out.update(changes)
+    return out
+
+
+def test_reaction_to_chemdraw_minimal_fills_the_optional_lists():
+    r = parse_request(capture("reaction_to_chemdraw", steps=[step()]))
+    assert r.params == {"steps": [{"reactants": [MOLFILE], "agents": [], "products": [MOLFILE],
+                                   "conditions": []}]}
+    assert list(r.params["steps"][0]) == list(protocol.CHEMDRAW_STEP_KEYS)
+
+
+def test_reaction_to_chemdraw_full():
+    r = parse_request(capture("reaction_to_chemdraw", steps=[
+        step(agents=[MOLFILE], conditions=["  Pd/C, H2 ", "", "   ", "EtOH, rt, 16 h"]),
+        step(reactants=[], agents=None, conditions=None),
+        step(products=[]),
+    ]))
+    steps = r.params["steps"]
+    assert steps[0]["agents"] == [MOLFILE]
+    assert steps[0]["conditions"] == ["Pd/C, H2", "EtOH, rt, 16 h"]   # trimmed, blanks dropped
+    assert steps[1] == {"reactants": [], "agents": [], "products": [MOLFILE], "conditions": []}
+    assert steps[2]["products"] == [] and steps[2]["reactants"] == [MOLFILE]
+
+
+def test_reaction_to_chemdraw_limits():
+    most = protocol.MAX_CHEMDRAW_STEP_MOLECULES
+    lines = protocol.MAX_CHEMDRAW_CONDITION_LINES
+    big = step(reactants=[MOLFILE] * most, agents=[MOLFILE] * most, products=[MOLFILE] * most,
+               conditions=["x" * protocol.MAX_REACTION_TEXT] * lines)
+    r = parse_request(capture("reaction_to_chemdraw", steps=[big] * protocol.MAX_CHEMDRAW_STEPS))
+    assert len(r.params["steps"]) == protocol.MAX_CHEMDRAW_STEPS
+    rejected(capture("reaction_to_chemdraw", steps=[step()] * (protocol.MAX_CHEMDRAW_STEPS + 1)))
+    rejected(capture("reaction_to_chemdraw", steps=[]))
+    for key in ("reactants", "agents", "products"):
+        rejected(capture("reaction_to_chemdraw", steps=[step(**{key: [MOLFILE] * (most + 1)})]))
+    rejected(capture("reaction_to_chemdraw", steps=[step(conditions=["x"] * (lines + 1))]))
+    rejected(capture("reaction_to_chemdraw",
+                     steps=[step(conditions=["x" * (protocol.MAX_REACTION_TEXT + 1)])]))
+    rejected(capture("reaction_to_chemdraw",
+                     steps=[step(products=["x" * (MAX_STRUCTURE_CHARS + 1)])]))
+
+
+@pytest.mark.parametrize("steps", [
+    None, "x", {"reactants": [MOLFILE], "products": [MOLFILE]}, 1,
+    [None], ["x"], [[]],
+    [{}],
+    [{"reactants": [MOLFILE]}],                            # products missing
+    [{"products": [MOLFILE]}],                             # reactants missing
+    [{"reactants": None, "products": [MOLFILE]}],
+    [{"reactants": [], "products": []}],                   # nothing to draw
+    [{"reactants": [], "products": [], "agents": [MOLFILE]}],
+    [{"reactants": MOLFILE, "products": [MOLFILE]}],       # not a list
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "agents": MOLFILE}],
+    [{"reactants": [{"molfile": MOLFILE}], "products": [MOLFILE]}],
+    [{"reactants": [None], "products": [MOLFILE]}],
+    [{"reactants": [7], "products": [MOLFILE]}],
+    [{"reactants": ["  \n "], "products": [MOLFILE]}],
+    [{"reactants": ["a\x01b"], "products": [MOLFILE]}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "conditions": "rt"}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "conditions": [5]}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "conditions": [None]}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "conditions": ["two\nlines"]}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "conditions": ["tab\there"]}],
+    [{"reactants": [MOLFILE], "products": [MOLFILE], "smiles": "C>>C"}],   # unknown key
+    [{"reactants": [MOLFILE], "products": [MOLFILE]}, {"reactants": [], "products": []}],
+])
+def test_reaction_to_chemdraw_rejected(steps):
+    rejected(capture("reaction_to_chemdraw", steps=steps))
+
+
+def test_reaction_to_chemdraw_needs_the_key_and_refuses_others():
+    rejected(capture("reaction_to_chemdraw"))
+    rejected(capture("reaction_to_chemdraw", steps=[step()], open=False))
+
+
+def test_reaction_to_chemdraw_error_names_the_place_not_the_content():
+    err = rejected(capture("reaction_to_chemdraw",
+                           steps=[step(), step(conditions=["ok", "secret\x02text"])]))
+    assert "steps[1].conditions[1]" in err.message and "secret" not in err.message
+
+
+@pytest.mark.parametrize("op", protocol.CAPTURE_OPS)
+def test_capture_ops_follow_the_envelope_rules(op):
+    params = {"recognition_status": {}, "recognize": {"image": "AAAA", "mode": "reaction"},
+              "describe_structures": {"structures": [{"smiles": "C"}]},
+              "reaction_to_chemdraw": {"steps": [step()]}}[op]
+    assert parse_request({"id": "e", "v": 1, "op": op, "params": params}).op == op
+    rejected({"id": "e", "v": 2, "op": op, "params": params}, "protocol_mismatch")
+    rejected({"id": "e", "v": 1, "op": op, "params": [params]})
+    rejected({"id": "e", "v": 1, "op": op, "params": {**params, "extra": 1}})

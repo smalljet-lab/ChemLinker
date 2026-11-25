@@ -1,0 +1,195 @@
+/* Stylesheet of the extension's capture page (capture.html). Local only: no remote fonts or images.
+   Same look as compounds.css. */
+
+:root {
+  color-scheme: light;
+  --text: #1f2328;
+  --muted: #4b535d;
+  --border: #c4c9d0;
+  --line: #e3e6ea;
+  --accent: #0b5cad;
+  --bg: #f6f8fa;
+  --mark: #b3261e;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { background: var(--bg); }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+}
+body.modal-open { overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.app { max-width: 1500px; margin: 0 auto; padding: 16px 16px 48px; }
+
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0 0 8px; font-size: 17px; }
+h3 { margin: 0; font-size: 16px; }
+h4 { margin: 0 0 4px; font-size: 13px; color: #3d444d; }
+p { margin: 4px 0; }
+.small { font-size: 12px; color: var(--muted); }
+.mono { font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace; overflow-wrap: anywhere; word-break: break-all; }
+.busy { font-style: italic; color: #3d444d; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.page-head, .panel, .step, .picture-panel {
+  background: #ffffff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-top: 12px;
+}
+.page-head { margin-top: 0; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 12px; border-radius: 4px; border: 1px solid #8c959f;
+  background: var(--bg); color: var(--text); cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: #eaeef2; }
+.btn.primary { background: #1a7f37; border-color: #116329; color: #ffffff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #116329; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.small-btn { padding: 2px 8px; font-size: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.row.inline { margin-top: 0; }
+
+select, textarea {
+  padding: 4px 6px; border: 1px solid #8c959f; border-radius: 4px; background: #ffffff;
+}
+.check { display: inline-flex; gap: 6px; align-items: center; margin-right: 12px; }
+
+.banner { margin-top: 6px; padding: 6px 10px; border-radius: 4px; border: 1px solid; overflow-wrap: anywhere; }
+.banner.warn { background: #fff8c5; border-color: #9a6700; color: #3b2300; }
+.banner.info { background: #ddf4ff; border-color: #54aeff; color: #0a3069; }
+.banner.error { background: #ffebe9; border-color: #cf222e; color: #5c0b10; }
+.banner.ok { background: #dafbe1; border-color: #1a7f37; color: #0f3d1d; }
+.banner strong { margin-right: 6px; }
+.banner .btn { margin-left: 6px; }
+.command { display: block; margin: 6px 0 2px; padding: 4px 8px; background: #ffffff; border: 1px solid var(--border); border-radius: 4px; user-select: all; }
+
+/* ---- selecting ---- */
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; margin-top: 8px; }
+fieldset.mode { margin: 0; padding: 4px 10px 6px; border: 1px solid var(--line); border-radius: 4px; }
+fieldset.mode legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
+.selection-note { margin-top: 8px; }
+.stage-wrap { margin-top: 8px; text-align: center; background: #d8dde3; border: 1px solid var(--border); border-radius: 4px; padding: 6px; }
+.stage {
+  position: relative; display: inline-block; max-width: 100%; line-height: 0;
+  cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.shot { display: block; max-width: 100%; max-height: calc(100vh - 80px); width: auto; height: auto; pointer-events: none; }
+.sel-box {
+  position: absolute; border: 2px solid var(--mark); background: rgba(179, 38, 30, 0.08);
+  box-shadow: 0 0 0 9999px rgba(31, 35, 40, 0.35); pointer-events: none;
+}
+.stage { overflow: hidden; }
+.handle {
+  position: absolute; width: 16px; height: 16px; padding: 0; border: 2px solid #ffffff; border-radius: 50%;
+  background: var(--mark); pointer-events: auto; touch-action: none;
+}
+.handle-nw { left: -9px; top: -9px; cursor: nwse-resize; }
+.handle-se { right: -9px; bottom: -9px; cursor: nwse-resize; }
+.handle-ne { right: -9px; top: -9px; cursor: nesw-resize; }
+.handle-sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
+
+/* ---- waiting ---- */
+.elapsed { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 8px; }
+
+/* ---- result ---- */
+.result-head { margin-top: 12px; }
+.result-body { display: grid; grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+.picture-panel { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow: auto; }
+.result-body.wide { grid-template-columns: minmax(0, 1fr); }
+.result-body.wide .picture-panel { max-height: 56vh; z-index: 2; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12); }
+.picture { max-width: var(--natural, 100%); }
+.result-body.wide .picture { max-width: min(var(--natural, 100%), calc(40vh * var(--ratio, 4))); }
+.picture { position: relative; display: block; line-height: 0; border: 1px solid var(--line); }
+.picture-img { display: block; width: 100%; height: auto; }
+.mol-box { position: absolute; border: 2px solid var(--accent); border-radius: 3px; pointer-events: none; }
+.mol-box.hot { border-color: var(--mark); border-width: 3px; background: rgba(179, 38, 30, 0.12); }
+/* The number sits on top of the box, outside it, so it never hides a part of the drawing. */
+.mol-box .num { position: absolute; left: -2px; bottom: 100%; border-radius: 4px 4px 0 0; line-height: 16px; font-size: 12px; min-width: 18px; }
+.mol-box.hot .num { background: var(--mark); left: -3px; }
+.num {
+  display: inline-block; min-width: 22px; padding: 0 5px; border-radius: 11px; background: var(--accent); color: #ffffff;
+  font-weight: 700; font-size: 13px; line-height: 20px; text-align: center;
+}
+
+.steps { min-width: 0; }
+.step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.roles { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 8px; margin-top: 8px; }
+.role-group { flex: 1 1 200px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfd; }
+.role-agent { background: #f6f8fa; }
+.arrow { flex: none; align-self: center; font-size: 22px; color: var(--muted); line-height: 1; }
+.empty { margin: 2px 0; }
+ul.cards { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.card {
+  flex: 1 1 200px; max-width: 320px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: #ffffff;
+}
+.card:hover, .card:focus-within { border-color: var(--mark); }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.tag { font-size: 12px; color: var(--muted); }
+.tag.edited { padding: 1px 6px; border-radius: 9px; background: #dafbe1; color: #0f3d1d; font-weight: 600; }
+/* The drawing says its own size (at most 260 x 170, see renderMolfileSvg): it is shown at that size
+   and only ever made smaller, so a small molecule is not blown up to fill the box. */
+.structure { display: block; width: 100%; height: 170px; object-fit: scale-down; margin: 4px 0; background: #ffffff; }
+.structure.none { display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 4px; font-size: 12px; }
+/* The SMILES is never cut: it breaks anywhere inside its own box, which takes the room the Copy
+   button leaves, and a very long one scrolls inside that box. */
+.smiles-row { display: flex; align-items: flex-start; gap: 6px; }
+.smiles-row > .btn { flex: none; }
+.smiles {
+  display: block; flex: 1 1 0; min-width: 0; max-height: 7.5em; overflow-x: hidden; overflow-y: auto;
+  padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: #f6f8fa;
+  font-size: 12px; line-height: 1.5; white-space: pre-wrap; user-select: text; -webkit-user-select: text;
+}
+.smiles-row > .small { flex: 1 1 0; }
+.rxn-line > .btn { flex: none; }
+.rxn-line .smiles { flex: 1 1 320px; }
+ul.warnings { margin: 6px 0 0; padding: 4px 8px 4px 24px; border: 1px solid #9a6700; border-radius: 4px; background: #fff8c5; color: #3b2300; font-size: 12px; }
+.card-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.ctl { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); }
+.ctl select { font-size: 13px; color: var(--text); }
+.rxn-line { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; margin-top: 10px; }
+.field-label, label.field > span { font-weight: 600; font-size: 13px; }
+label.field { display: block; margin-top: 8px; }
+textarea.conditions { display: block; width: 100%; max-width: 720px; margin-top: 2px; resize: vertical; }
+.step.unused { background: #fbfcfd; }
+
+/* ---- editor ---- */
+.overlay {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(31, 35, 40, 0.55);
+}
+.dialog {
+  width: min(900px, 100%); max-height: 100%; overflow: auto;
+  background: #ffffff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+.dialog-title:focus { outline: none; }
+/* Headings that only take the focus so that reading starts there. */
+h2[tabindex="-1"]:focus { outline: none; }
+.card-name { display: inline-flex; }
+.tag[title] { cursor: help; }
+/* The part of the picture the molecule was read from: the dialog covers the picture on the page. */
+.ref { margin: 6px 0 0; }
+.ref-frame {
+  position: relative; overflow: hidden; aspect-ratio: var(--ratio, 2);
+  width: min(100%, var(--natural, 100%), calc(22vh * var(--ratio, 2)));
+  margin-top: 2px; border: 1px solid var(--border); border-radius: 4px; background: #ffffff;
+}
+.ref-img { position: absolute; max-width: none; pointer-events: none; }
+.editor {
+  position: relative; width: 100%; height: min(460px, 52vh); margin-top: 6px;
+  border: 1px solid var(--border); border-radius: 4px; background: #ffffff; overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .result-body { grid-template-columns: 1fr; }
+  .picture-panel, .result-body.wide .picture-panel { position: static; max-height: none; box-shadow: none; }
+  .result-body.wide .picture { max-width: var(--natural, 100%); }
+}

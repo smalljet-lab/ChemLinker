@@ -105,8 +105,14 @@ describe("constants mirrored from src/compound_registry/protocol.py", () => {
         "DEFAULT_YIELD_PAGE_SIZE",
         "EXTENSION_ID",
         "HOST_NAME",
+        "MAX_CHEMDRAW_CONDITION_LINES",
+        "MAX_CHEMDRAW_STEPS",
+        "MAX_CHEMDRAW_STEP_MOLECULES",
+        "MAX_DESCRIBE_STRUCTURES",
         "MAX_FILE_NAME",
         "MAX_FOLDER_FILES",
+        "MAX_IMAGE_BASE64_CHARS",
+        "MAX_IMAGE_SIDE",
         "MAX_NAME_TEXT",
         "MAX_PAGE_SIZE",
         "MAX_PDF_BYTES",
@@ -115,12 +121,14 @@ describe("constants mirrored from src/compound_registry/protocol.py", () => {
         "MAX_REACTION_ROWS",
         "MAX_REACTION_TEXT",
         "MAX_REASON_TEXT",
+        "MAX_RECOGNITION_MOLECULES",
         "MAX_REF_TEXT",
         "MAX_ROUTE_CDXML_CHARS",
         "MAX_SEARCH_TEXT",
         "MAX_STRUCTURE_CHARS",
         "MAX_YIELD_PAGE_SIZE",
         "MAX_YIELD_PERCENT",
+        "MIN_IMAGE_SIDE",
         "PDF_CHUNK_BYTES",
         "PROTOCOL_VERSION",
       ].sort(),
@@ -134,15 +142,56 @@ describe("constants mirrored from src/compound_registry/protocol.py", () => {
   it("the extension sends only operations the host knows, and never retire", () => {
     const ops = tuple("OPS");
     expect(ops).toContain("ping");
-    for (const op of [...SITE_OPS, ...protocol.PAGE_OPS]) expect(ops, op).toContain(op);
+    for (const op of [...SITE_OPS, ...protocol.PAGE_OPS, ...protocol.CAPTURE_OPS]) expect(ops, op).toContain(op);
     expect(ops).toContain("retire");
-    expect([...SITE_OPS, ...protocol.PAGE_OPS]).not.toContain("retire");
+    expect([...SITE_OPS, ...protocol.PAGE_OPS, ...protocol.CAPTURE_OPS]).not.toContain("retire");
+  });
+
+  it("the capture page's operations are exactly the ones the host serves without a registry", () => {
+    expect([...protocol.CAPTURE_OPS]).toEqual(["recognition_status", "recognize", "describe_structures", "reaction_to_chemdraw"]);
+    expect(tuple("CAPTURE_OPS")).toEqual([...protocol.CAPTURE_OPS]);
+    // No other part of the extension may send them.
+    for (const op of protocol.CAPTURE_OPS) {
+      expect(SITE_OPS, op).not.toContain(op);
+      expect(protocol.PAGE_OPS, op).not.toContain(op);
+    }
+  });
+
+  it("the lists of recognition modes, states and warning codes are the host's", () => {
+    expect(tuple("RECOGNITION_MODES")).toEqual([...protocol.RECOGNITION_MODES]);
+    expect(tuple("RECOGNITION_STATES")).toEqual([...protocol.RECOGNITION_STATES]);
+    expect(tuple("MOLECULE_WARNING_CODES")).toEqual([...protocol.MOLECULE_WARNING_CODES]);
+    expect(tuple("STRUCTURE_WARNING_CODES")).toEqual([...protocol.STRUCTURE_WARNING_CODES]);
+    expect(tuple("RECOGNITION_WARNING_CODES")).toEqual([...protocol.RECOGNITION_WARNING_CODES]);
+    expect([...protocol.MOLECULE_WARNING_CODES]).toEqual([
+      "unparsable", "placeholder", "isotope", "unusual_element", "stereo", "charged_or_salt", "low_confidence", "duplicate",
+      "smiles_molfile_differ",
+    ]);
+    for (const code of protocol.STRUCTURE_WARNING_CODES) expect(protocol.MOLECULE_WARNING_CODES, code).toContain(code);
+  });
+
+  it("the largest recognize request stays under the host's frame limit", () => {
+    const request: protocol.HostRequest<"recognize"> = {
+      id: "x".repeat(64),
+      v: protocol.PROTOCOL_VERSION,
+      op: "recognize",
+      params: { image: "A".repeat(protocol.MAX_IMAGE_BASE64_CHARS), mode: "molecule" },
+    };
+    expect(JSON.stringify(request).length).toBeLessThan(assigned.get("MAX_REQUEST_BYTES") as number);
+  });
+
+  it("the time the extension waits for a recognition is longer than the host takes at most", () => {
+    expect(assigned.get("RECOGNIZE_TIMEOUT_S")).toBe(270);
+    expect(protocol.RECOGNIZE_TIMEOUT_MS).toBeGreaterThan((assigned.get("RECOGNIZE_TIMEOUT_S") as number) * 1000);
   });
 
   it("the error codes the extension reacts to are the host's", () => {
     const hostCodes = tuple("HOST_ERROR_CODES");
     expect(hostCodes).toContain(protocol.REGISTRY_CHANGED);
     expect(hostCodes).toContain(protocol.REGISTRY_MISSING);
+    for (const code of [protocol.RECOGNITION_NOT_INSTALLED, protocol.RECOGNITION_FAILED, protocol.IMAGE_INVALID]) {
+      expect(hostCodes, code).toContain(code);
+    }
     for (const code of [protocol.YIELD_MISMATCH, protocol.FILE_UNAVAILABLE]) expect(python).toContain(`\`\`${code}\`\``);
   });
 

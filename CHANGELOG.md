@@ -5,10 +5,54 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The registry
 program and the browser extension are released together under one version
 number.
 
-## [Unreleased]
+## [0.12.0] - 2026-11-24
 
 ### Added
 
+- **Capture reaction: read a drawn reaction scheme from the screen.** Click
+  the ChemLinker button in the browser's toolbar and choose **Capture
+  reaction** (or press Alt+Shift+R). The extension takes a picture of the tab
+  you are looking at (a paper, a PDF, a slide) and shows it on a page of its
+  own. Drag a box around the scheme and press **Recognise**. You get every
+  molecule as SMILES and as a structure you can edit, which molecules are
+  reactants, products or drawn over the arrow, the reaction SMILES, the text
+  at the arrow, **Copy all**, and **Open in ChemDraw**, which draws the
+  reaction as you corrected it. A switch reads a single molecule instead of
+  a reaction. Everything runs on your PC with open-source programs
+  (RxnScribe, MolScribe, EasyOCR); no picture, structure or text is sent
+  anywhere, the picture is kept in memory only, and no registry is needed.
+- **The result is a draft to check.** About 9 of 10 molecules are read
+  correctly from a clean drawing and about 7 of 10 from a figure in a paper;
+  a wrong answer often looks plausible, and the text at the arrow is often
+  misread. The page shows the picture with numbered boxes next to the redrawn
+  structures and marks what deserves a second look (stereo and double-bond
+  geometry, salts, isotope labels, unusual elements, placeholders, a low
+  score of the program, two readings that disagree). You can correct every
+  structure in the built-in editor, change roles and steps, add or remove
+  molecules and edit the text.
+- **Each structure is redrawn the way the picture shows it,** so you can
+  compare the two at a glance: the same orientation, the same atoms left,
+  right, up and down, evened out to regular rings and equal bonds. A group
+  the picture abbreviates (Boc, OTf, Ph) is drawn out from where its label
+  stands. Every stereocentre is drawn with a wedge that says what the SMILES
+  on the same card says, on the bond the picture has wedged where that is
+  possible; the structure editor and **Open in ChemDraw** get the same
+  drawing. Only a structure whose drawing cannot be used gets a fresh layout.
+- **`compound-registry install-recognition`** installs the part this needs.
+  It is optional and large (about 2.8 GB in
+  `%LOCALAPPDATA%\CompoundRegistry\recognition`, about 2.5 GB of memory while
+  it runs, no graphics card needed). The installer asks
+  `Install ChemRecogniser (about 2.8 GB)?` (default no; `--recognition yes|no`
+  answers in advance, `--yes` never installs it, an update refreshes an
+  existing one). The
+  internet is needed for this command only; the model files are checked
+  against known checksums. The command can be interrupted and repeated,
+  `--models-from <folder>` uses model files you already have, `--uninstall`
+  removes the part (only what the command itself created), and `doctor`
+  shows whether it is installed. Run it again after an update of ChemLinker
+  that changes the recognition programs, or after moving the ChemLinker
+  folder; the capture page says when that is needed. The registry program's
+  own environment is not changed.
 - **Spectra of undesired side products in the MestReNova add-on.** Under the
   **Crude spectrum** box, the dialog that links a spectrum to a compound ID
   has a box **Undesired side product**. With the box ticked, the document is
@@ -17,6 +61,28 @@ number.
   spectrum, only the place of that file is stored with the compound: no PDF,
   no shift report and no parameters. The catalogue lists it under
   **Undesired side product** with its path and nothing else.
+
+### Changed
+
+- **The toolbar button opens a small menu** with **Capture reaction** and
+  **Open compound catalogue**. Before, a click opened the catalogue directly.
+- **The extension asks for one more permission, `activeTab`.** It lets the
+  extension take a picture of the tab you are looking at, and only at the
+  moment you choose **Capture reaction** or press its shortcut. It gives no
+  access to other tabs or to the content of web pages, and the extension
+  still runs on the ELN address only.
+- **ChemDraw routes:** a double bond whose geometry is not known is drawn as
+  a wavy double bond instead of a definite E or Z, and a long line at an
+  arrow without commas is wrapped at spaces.
+
+### Updating from 0.11.0
+
+Run `update.cmd` (or `install.cmd`), install the 0.12.0 extension in the
+browser and restart the browser, so that it starts the new program. The
+registry itself does not change. To use **Capture reaction**, run
+`.venv\Scripts\compound-registry.exe install-recognition` once in the
+project folder; everything else works without it. In Chrome, **Capture
+reaction** does not work for a tab in an Incognito window.
 
 ## [0.11.0] - 2026-11-23
 
@@ -142,5 +208,6 @@ What changes:
   folder names. Existing registries keep their format.
 - `chrome-extension.md` was replaced by `docs/browsers.md`.
 
+[0.12.0]: https://github.com/smalljet-lab/ChemLinker/releases/tag/v0.12.0
 [0.11.0]: https://github.com/smalljet-lab/ChemLinker/releases/tag/v0.11.0
 [0.10.0]: https://github.com/smalljet-lab/ChemLinker/releases/tag/v0.10.0

@@ -12,6 +12,7 @@ class NoEditor implements StructureEditor {
   getMolfile(): string | null {
     return null;
   }
+  setMolfile(): void {}
   clear(): void {}
   destroy(): void {}
 }

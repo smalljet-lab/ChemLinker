@@ -1,0 +1,40 @@
+/* Stylesheet of the toolbar popup (popup.html). Local only: no remote fonts or images. */
+
+:root {
+  color-scheme: light;
+  --text: #1f2328;
+  --muted: #4b535d;
+  --border: #c4c9d0;
+  --accent: #0b5cad;
+  --bg: #f6f8fa;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { background: #ffffff; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+.popup { width: 300px; padding: 6px; }
+.popup h1 { margin: 4px 8px 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.menu { display: flex; flex-direction: column; gap: 2px; }
+.menu-item {
+  display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px;
+  background: transparent; text-align: left; cursor: pointer;
+}
+.menu-item:hover:not(:disabled) { background: #eaeef2; }
+.menu-item:disabled { opacity: 0.6; cursor: default; }
+.menu-title { display: block; font-weight: 600; }
+.menu-hint { display: block; font-size: 12px; color: var(--muted); }
+.problem {
+  margin: 6px 4px 2px; padding: 6px 10px; border: 1px solid #cf222e; border-radius: 4px;
+  background: #ffebe9; color: #5c0b10; font-size: 13px; overflow-wrap: anywhere;
+}

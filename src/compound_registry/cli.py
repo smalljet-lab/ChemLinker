@@ -1047,6 +1047,7 @@ def cmd_doctor(ctx: Context) -> int:
     # Informational only: a host problem never changes doctor's exit code.
     result["native_host"] = _native_host_status("firefox")
     result["native_host_chrome"] = _native_host_status("chrome")
+    result["recognition"] = _recognition_status()
     if ctx.json:
         emit_json(result)
     else:
@@ -1083,8 +1084,57 @@ def cmd_doctor(ctx: Context) -> int:
         _print_native_hosts({"firefox": result["native_host"],
                              "chrome": result["native_host_chrome"]},
                             os.path.normcase(result["home"]))
+        _print_recognition(result["recognition"])
         _print_warnings(result["warnings"])
     return 0 if result["integrity"] in ("ok", "unknown") else 1
+
+
+# --------------------------------------------------------------------------- recognition
+
+def _recognition_status() -> dict[str, Any]:
+    """Whether the optional recognition part ("Capture reaction") is
+    installed. Looks at files only; never fails."""
+    from . import recognition
+
+    return recognition.install_state()
+
+
+def _print_recognition(state: dict[str, Any]) -> None:
+    from . import recognition
+
+    if state.get("installed"):
+        out(f"Recognition     installed in {state.get('home')}")
+    elif state.get("problem") and state.get("home") and os.path.isdir(state["home"]):
+        out(f"Recognition     NOT complete in {state['home']}: {state['problem']}")
+        out(f"                (run '{recognition.INSTALL_COMMAND}' again)")
+    else:
+        out("Recognition     not installed (optional: reads reaction schemes from pictures;")
+        out(f"                '{recognition.INSTALL_COMMAND}')")
+
+
+def cmd_install_recognition(ctx: Context) -> int:
+    """Install, complete or remove the optional recognition part."""
+    from . import recognition_install
+
+    args = ctx.args
+    home = getattr(args, "recognition_home", None)
+    home = Path(home).expanduser() if home else None
+    # Progress is for people: in --json mode it goes to stderr, so that stdout
+    # holds exactly one document.
+    def say(text: str) -> None:
+        # Flushed at once: uv writes to the same terminal in between.
+        (err if ctx.json else out)(text)
+        (sys.stderr if ctx.json else sys.stdout).flush()
+
+    tools = recognition_install.Tools(say=say)
+    if args.uninstall:
+        result = recognition_install.uninstall(home, tools=tools)
+    else:
+        models_from = Path(args.models_from).expanduser() if args.models_from else None
+        result = recognition_install.install(home, models_from=models_from, tools=tools)
+    if ctx.json:
+        emit_json(result)
+    return 0
 
 
 # --------------------------------------------------------------------------- browser host
@@ -1181,6 +1231,7 @@ def cmd_setup(ctx: Context) -> int:
         home=getattr(args, "home", None), browser=args.browser, eln_origin=args.eln_origin,
         id_prefix=args.id_prefix, id_format=args.id_format,
         create_registry=args.create_registry, mnova=args.mnova,
+        recognition=args.recognition,
         skip_extension=args.skip_extension, force=args.force, yes=args.yes,
         upgrade=args.upgrade, dry_run=args.dry_run)
     env = setup_wizard.real_environment(lambda prompt: input(_ascii(prompt)), out,
@@ -1579,6 +1630,47 @@ def add_host_status_parser(sub, common) -> None:
     p.set_defaults(handler=cmd_host_status)
 
 
+def add_install_recognition_parser(sub, common) -> None:
+    # Own parent instead of ``common``: --home here is the recognition folder,
+    # not a registry.
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                        help="machine output: exactly one JSON document on stdout (progress "
+                             "goes to stderr)")
+    p = sub.add_parser("install-recognition", parents=[parent],
+                       help="install the optional part that reads reaction schemes from "
+                            "pictures (about 2.8 GB)",
+                       description="Install the optional recognition part used by 'Capture "
+                                   "reaction' in the browser extension: a Python environment of "
+                                   "its own with torch, RxnScribe, MolScribe and EasyOCR (about "
+                                   "1.2 GB) and their model files (about 1.6 GB), for the "
+                                   "current user, without administrator rights. The internet "
+                                   "is needed for this command only; the recognition itself "
+                                   "runs on this PC and sends nothing anywhere. The command "
+                                   "can be interrupted and run again: it continues where it "
+                                   "stopped. It changes no registry and not the registry "
+                                   "program's own environment.")
+    p.add_argument("--home", dest="recognition_home", metavar="PATH",
+                   help="install into PATH instead of the usual per-user folder. The browser "
+                        "extension only finds it there when the environment variable "
+                        "COMPOUND_REGISTRY_RECOGNITION_HOME names the same folder")
+    p.add_argument("--models-from", metavar="DIR",
+                   help="copy the model files from DIR (already downloaded, same file names) "
+                        "instead of downloading them; they are checked all the same")
+    p.add_argument("--uninstall", action="store_true",
+                   help="remove the recognition part again. Only what this command made is "
+                        "deleted: a folder named env or models that it did not create is "
+                        "left alone")
+    p.set_defaults(handler=cmd_install_recognition, _validate=_validate_install_recognition,
+                   _parser=p)
+
+
+def _validate_install_recognition(parser: argparse.ArgumentParser,
+                                  args: argparse.Namespace) -> None:
+    if args.uninstall and args.models_from:
+        parser.error("--uninstall and --models-from cannot be combined")
+
+
 def add_setup_parser(sub, common) -> None:
     # Own --home (not ``common``): here it is the data folder to install for.
     parent = argparse.ArgumentParser(add_help=False)
@@ -1609,6 +1701,11 @@ def add_setup_parser(sub, common) -> None:
                         "--id-format'; permanent)")
     p.add_argument("--mnova", choices=("yes", "no"),
                    help="install / refresh the MestReNova add-on, or leave it alone")
+    p.add_argument("--recognition", choices=("yes", "no"),
+                   help="install / refresh ChemRecogniser, the optional part that reads "
+                        "reaction schemes from the screen (about 2.8 GB), or leave it alone. "
+                        "Without this option the installer asks; --yes never installs it and "
+                        "--upgrade only refreshes an existing one")
     p.add_argument("--skip-extension", action="store_true",
                    help="do not build the extension packages")
     p.add_argument("--force", action="store_true",
@@ -1666,6 +1763,7 @@ COMMANDS: list[Callable[[Any, argparse.ArgumentParser], None]] = [
     add_install_host_parser,
     add_uninstall_host_parser,
     add_host_status_parser,
+    add_install_recognition_parser,
 ]
 
 

@@ -26,6 +26,9 @@ class FakeEditor implements StructureEditor {
   getMolfile(): string | null {
     return this.molfile;
   }
+  setMolfile(molfile: string): void {
+    this.molfile = molfile;
+  }
   clear(): void {
     this.molfile = null;
     this.cleared += 1;

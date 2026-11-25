@@ -94,6 +94,37 @@ on the extension's card.
 In both browsers, reload the open ELN tabs after loading or reloading the
 extension.
 
+## The toolbar button, the shortcut and the permissions
+
+The toolbar button opens a small popup (`popup.html`) with two entries:
+**Capture reaction** and **Open compound catalogue**. The manifest also
+defines the keyboard shortcut Alt+Shift+R for **Capture reaction**
+(`commands`). Change it in Firefox under `about:addons`, gear menu, **Manage
+Extension Shortcuts**, and in Chrome under `chrome://extensions/shortcuts`.
+
+The extension has exactly two permissions, in both browsers:
+
+| Permission | Why |
+| --- | --- |
+| `nativeMessaging` | To talk to the registry program on this PC. |
+| `activeTab` | For **Capture reaction**: `tabs.captureVisibleTab` takes a picture of the tab you are looking at. The permission is given by the browser only at the moment you click the button's entry or press the shortcut, and only for that tab. |
+
+Besides these it has access to the one ELN address (`host_permissions`).
+**Capture reaction** adds no content script, no access to other addresses and
+no `scripting` permission: the picture is shown on the extension's own page
+(`capture.html`), the web page itself is never touched. The picture is kept
+in the memory of the background script until that page has fetched it (once,
+at most 60 seconds) and is never stored.
+
+Reading the picture needs the optional recognition part of the registry
+program (about 2.8 GB, `compound-registry install-recognition`, see the
+README). It runs on this PC only; its result is a draft that the user checks
+on the capture page. Without it the capture page explains how to install it.
+
+Limits: the browsers' own pages (settings, the new tab page, the add-on
+store) cannot be captured. In Chrome a tab in an Incognito window is refused,
+because the capture page could only open in a normal window.
+
 ## The fixed Chrome extension ID
 
 Chrome gives an unpacked extension an ID. Normally the ID depends on the

@@ -3,7 +3,7 @@
 // writes the result into chrome-extension/manifest.json.
 //
 // Kept unchanged: name, version, description, permissions, host_permissions,
-// content_scripts. Changed: no browser_specific_settings; the background is a
+// content_scripts, commands, the popup of the toolbar button. Changed: no browser_specific_settings; the background is a
 // service worker; the toolbar button has PNG icons and no default_area.
 // Added: "key" (fixes the extension ID the native host accepts), "icons" and
 // "minimum_chrome_version". Nothing else: no new permission, no
@@ -24,10 +24,11 @@ const KNOWN_KEYS = [
   "host_permissions",
   "action",
   "background",
+  "commands",
   "content_scripts",
 ];
 
-const KNOWN_ACTION_KEYS = ["default_title", "default_icon", "default_area"];
+const KNOWN_ACTION_KEYS = ["default_title", "default_icon", "default_area", "default_popup"];
 
 /** {"16": "icons/icon-16.png", ...} */
 export function iconMap() {
@@ -77,6 +78,7 @@ export function chromeManifest(firefox, chromeKey) {
   const chromeAction = {};
   if (action.default_title !== undefined) chromeAction.default_title = action.default_title;
   chromeAction.default_icon = icons;
+  if (action.default_popup !== undefined) chromeAction.default_popup = action.default_popup;
 
   return {
     manifest_version: 3,
@@ -90,6 +92,7 @@ export function chromeManifest(firefox, chromeKey) {
     host_permissions: structuredClone(firefox.host_permissions),
     action: chromeAction,
     background: { service_worker: scripts[0] },
+    ...(firefox.commands !== undefined ? { commands: structuredClone(firefox.commands) } : {}),
     content_scripts: structuredClone(firefox.content_scripts),
   };
 }

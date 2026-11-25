@@ -29,6 +29,7 @@ same PC. The registry is one folder that you choose and back up.
 | Internet | During installation and updates only (Python packages, build tools). |
 | ChemDraw (optional) | Desktop ChemDraw on Windows, for compound names and for opening synthesis routes. Tried with ChemDraw 26. |
 | MestReNova (optional) | On Windows, for the NMR add-on. Tried with MestReNova 17. |
+| Reading reactions from the screen (optional) | An extra part of about 2.8 GB on disk that uses about 2.5 GB of memory while it runs. No graphics card is needed. See [Capture a reaction from the screen](#capture-a-reaction-from-the-screen-optional). |
 
 No administrator rights are needed. Everything is installed for the current
 Windows user only.
@@ -84,7 +85,13 @@ Then the questions come in this order:
 3. **ELN address.** Press Enter for the default, or type the address of your
    own Sciformation.
 4. **MestReNova add-on.** Asked only when MestReNova was found on the PC.
-5. **Continue?** The installer shows what it will do. Nothing has been
+5. **ChemRecogniser.** The optional part behind "Capture reaction": it reads a
+   drawn reaction scheme from a picture of the screen. The installer asks
+   `Install ChemRecogniser (about 2.8 GB)?`; the default is no. It needs about
+   2.8 GB on disk, most of it downloaded during the installation, and can be
+   added later with `compound-registry install-recognition`. See
+   [Capture a reaction from the screen](#capture-a-reaction-from-the-screen-optional).
+6. **Continue?** The installer shows what it will do. Nothing has been
    changed before this point.
 
 The installer then creates the registry (if you said so), registers the
@@ -225,8 +232,8 @@ run the update and reload the extension.
    of a known compound, or a new batch of a known one.
 3. Click **Create ID**, check the summary, then click **Create**. The ID is
    permanent from this moment. Copy it into the ELN and your notebook.
-4. Click **All compounds** in the panel (or the extension's toolbar button) to
-   open the catalogue. It has three views: **Compounds** (search by ID, name,
+4. Click **All compounds** in the panel (or the extension's toolbar button,
+   then **Open compound catalogue**) to open the catalogue. It has three views: **Compounds** (search by ID, name,
    formula, ELN number, SMILES, InChI or a drawn structure), **Yields** and
    **Import**.
 5. In the details of a compound you find its batches and experiments, its
@@ -248,6 +255,80 @@ run the update and reload the extension.
 
 An ID cannot be deleted or reused. A wrongly created ID is retired in a
 terminal, see below.
+
+## Capture a reaction from the screen (optional)
+
+**Capture reaction** in the extension's toolbar button reads a drawn reaction
+scheme from the browser tab you have open (a paper, a PDF, a slide): you drag
+a box around the scheme and get every molecule as SMILES and as a structure
+you can edit, the reaction SMILES, the text at the arrow, and a button that
+opens the reaction in ChemDraw. It needs no registry and creates no IDs.
+
+How to use it:
+
+1. Show the reaction scheme in a browser tab (a web page or a PDF opened in
+   the browser) and scroll so that the whole scheme is visible.
+2. Click the ChemLinker button in the toolbar and choose **Capture
+   reaction**, or press **Alt+Shift+R**. (The shortcut can be changed in the
+   browser's settings for add-on shortcuts. On some pages only the button
+   works.) A new tab opens with a picture of what the tab showed.
+3. Drag a box around the scheme (**Whole picture** takes everything), choose
+   **Reaction** or **Single molecule**, and press **Recognise**. The first
+   time after the browser started this takes longer, because the models are
+   loaded.
+4. Check the result against the picture: every molecule has a numbered box
+   in the picture and a card with the redrawn structure, its SMILES and
+   warnings. **Edit** corrects a structure in the built-in editor; role and
+   step of each molecule and the text at the arrow can be changed.
+5. **Copy** a SMILES, **Copy all**, or **Open in ChemDraw**.
+
+To take the picture the extension has the permission `activeTab`: it may
+photograph the tab you are looking at, only at the moment you choose
+**Capture reaction** or press the shortcut. It cannot read other tabs or the
+content of web pages. In Chrome, a tab in an Incognito window cannot be
+captured.
+
+This needs an extra part that the installer does not install, because it is
+large. Install it once, in a terminal in the project folder:
+
+```
+.venv\Scripts\compound-registry.exe install-recognition
+```
+
+- **What it is.** Three open-source programs that run on your PC: RxnScribe
+  finds the reactions in the picture, MolScribe reads each molecule, EasyOCR
+  reads the text. They get a Python environment of their own; the registry
+  program itself is not changed.
+- **Size.** About 2.8 GB on disk (1.2 GB programs, 1.6 GB model files), in
+  `%LOCALAPPDATA%\CompoundRegistry\recognition`. While it runs it uses about
+  2.5 GB of memory. No graphics card is needed.
+- **Offline.** The internet is needed for the installation only (the command
+  downloads from PyPI, pytorch.org, GitHub and huggingface.co and checks the
+  model files against known checksums). Afterwards nothing is downloaded and
+  nothing leaves your PC: no picture, no structure, no text. The screenshot
+  is kept in memory only.
+- **Speed.** The first capture after starting the browser loads the models:
+  20 to 35 seconds, a few minutes the very first time. After that a scheme
+  takes about 10 to 20 seconds. The program stops by itself after 10 minutes
+  without use and when the browser closes.
+- **The result is a draft.** About 9 of 10 molecules are read correctly from
+  a clean drawing, about 7 of 10 from a figure in a paper, and a wrong answer
+  often looks plausible. The page marks what to look at (stereo and
+  double-bond geometry, salts, isotope labels, unusual elements,
+  placeholders, a low score of the program), and text at the arrow is often
+  misread. A reagent that is written as text over the arrow is not a
+  molecule and is missing from the reaction SMILES. Check every structure
+  before you use it.
+
+The command can be interrupted and run again; it continues where it stopped.
+If you already have the model files, `--models-from <folder>` copies them
+instead of downloading. `doctor` shows whether the part is installed.
+`install-recognition --uninstall` removes it again.
+
+Run the command again in two cases: after an update of ChemLinker, when the
+capture page says the part was installed for another version; and after you
+moved or renamed the ChemLinker folder (the part uses the Python inside that
+folder; the command makes its environment again and keeps the model files).
 
 ## What counts as the same compound
 
@@ -389,7 +470,10 @@ In a terminal in the project folder:
 ```
 
 The first command removes the registration with the browsers. The second
-removes the MestReNova add-on (Windows only). Then remove the extension in the
+removes the MestReNova add-on (Windows only). If you installed the optional
+part that reads reactions from the screen, remove it with
+`.venv\Scripts\compound-registry.exe install-recognition --uninstall` (it is
+not inside the project folder). Then remove the extension in the
 browser (`about:addons` or `chrome://extensions`) and delete the project
 folder.
 

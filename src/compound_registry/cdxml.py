@@ -6,6 +6,10 @@ program opens as a reaction scheme (one ``<step>`` per reaction arrow, naming
 its reactants, products and the texts above and below it). No I/O, no time
 stamps: the same route always gives the same text.
 
+:func:`render_reaction` draws reaction steps that come without a registry
+(``reaction_to_chemdraw``, "Capture reaction") with the same building blocks,
+see its docstring.
+
 ChemDraw does not keep those ``<step>`` elements as written: when it opens
 the file it reads each row again by its geometry. Everything right of an
 arrow up to the next arrow counts as that arrow's products, so a continued
@@ -25,7 +29,10 @@ What is drawn
   ChemDraw default); a file without usable 2D coordinates (all atoms on one
   spot, or 3D) gets coordinates from RDKit. Aromatic bonds are written as
   alternating single and double bonds; wedges, hashes and wavy bonds keep the
-  atom they start at; charges, isotopes, radicals (one unpaired electron as
+  atom they start at; a double bond the molfile marks as "E or Z unknown" is
+  written as a wavy double bond (otherwise the coordinates would give it a
+  geometry); a numbered R group ("[1*]") is labelled "R1"; charges, isotopes,
+  radicals (one unpaired electron as
   a doublet, two as a triplet), explicit H atoms and every fragment (salts,
   counter-ions, the C-Li of methyllithium) are kept. ChemDraw itself
   writes the atom labels with their implicit hydrogens (a radical atom gets
@@ -34,7 +41,8 @@ What is drawn
   compound without a structure is written as its name.
 * Reagents above the arrow, solvents and the run lines below it, centred on
   the arrow. A line wider than :data:`MAX_LINE_WIDTH` is wrapped after a
-  comma. Digit runs of formula-like texts (``Text.formula``) are subscripts.
+  comma, and where that is not enough at a space. Digit runs of formula-like
+  texts (``Text.formula``) are subscripts.
 
 Layout
 ------
@@ -86,7 +94,7 @@ from rdkit.Chem import rdDepictor
 from .route_model import Participant, Route, Step, Text
 from .routes import read_molfile
 
-__all__ = ["render_route", "ACS_1996", "BOND_LENGTH", "MAX_ROW_WIDTH", "MAX_LINE_WIDTH", "SLIDE_WIDTH",
+__all__ = ["render_route", "render_reaction", "ReactionStep", "ACS_1996", "BOND_LENGTH", "MAX_ROW_WIDTH", "MAX_LINE_WIDTH", "SLIDE_WIDTH",
            "SLIDE_HEIGHT", "SLIDE_MARGIN", "text_width",
            "formula_runs"]
 
@@ -106,7 +114,8 @@ SLIDE_HEIGHT = 540.0
 SLIDE_MARGIN = 24.0
 #: A row is not made wider than this (points), unless one step alone is.
 MAX_ROW_WIDTH = SLIDE_WIDTH - 2 * SLIDE_MARGIN
-#: Texts at an arrow wider than this (points) are wrapped after a comma.
+#: Texts at an arrow wider than this (points) are wrapped (after a comma,
+#: else at a space).
 MAX_LINE_WIDTH = 220.0
 
 #: Unpaired electrons (RDKit) -> CDXML ``Radical``. RDKit reads a molfile's
@@ -242,6 +251,7 @@ _ORDERS = {Chem.BondType.DOUBLE: "2", Chem.BondType.TRIPLE: "3", Chem.BondType.A
            Chem.BondType.DATIVE: "dative", Chem.BondType.DATIVEONE: "dative",
            Chem.BondType.ZERO: "0.5", Chem.BondType.QUADRUPLE: "4"}
 _V2000_STEREO = {1: _HEAD, 6: _HASH, 4: _WAVY}
+_V2000_DOUBLE_EITHER = 3
 _V3000_CFG = {1: _HEAD, 3: _HASH, 2: _WAVY}
 _DIRS = {Chem.BondDir.BEGINWEDGE: _HEAD, Chem.BondDir.BEGINDASH: _HASH,
          Chem.BondDir.UNKNOWN: _WAVY}
@@ -255,9 +265,16 @@ def _int_prop(obj: Any, name: str) -> int | None:
 
 
 def _drawn_display(bond: Chem.Bond) -> str | None:
-    """Wedge / hash / wavy as written in the molfile."""
+    """Wedge / hash / wavy as written in the molfile.
+
+    A double bond marked "geometry unknown" (V2000 bond stereo 3; RDKit writes
+    it for every double bond that could be E or Z but is neither) is written
+    as a wavy double bond. Without the mark ChemDraw would read a definite E
+    or Z from the coordinates, which the structure does not have."""
     stereo = _int_prop(bond, "_MolFileBondStereo")
     if stereo is not None:
+        if stereo == _V2000_DOUBLE_EITHER:
+            return _WAVY if bond.GetBondType() == Chem.BondType.DOUBLE else None
         return _V2000_STEREO.get(stereo)
     cfg = _int_prop(bond, "_MolFileBondCfg")
     return _V3000_CFG.get(cfg) if cfg is not None else None
@@ -401,12 +418,20 @@ def _layout_molecule(mol: Chem.Mol) -> _Drawing:
                 break
         if atom.GetAtomicNum() != 0 and alias == "*":
             alias = None
+        isotope = atom.GetIsotope()
+        if atom.GetAtomicNum() == 0:
+            # A numbered R group ("[1*]", how the recognition writes R1) has
+            # its number as the isotope: it belongs into the label, where the
+            # reader sees it, and means nothing as an isotope of a nickname.
+            if isotope and alias in (None, "R", "*"):
+                alias = f"R{isotope}"
+            isotope = 0
         try:
             hydrogens = atom.GetNumImplicitHs()
         except Exception:  # noqa: BLE001
             hydrogens = 0
         atoms.append(_Atom(x=pos[i][0] * scale, y=-pos[i][1] * scale, element=atom.GetAtomicNum(),
-                           charge=atom.GetFormalCharge(), isotope=atom.GetIsotope(),
+                           charge=atom.GetFormalCharge(), isotope=isotope,
                            radicals=atom.GetNumRadicalElectrons(), alias=alias,
                            hydrogens=hydrogens, bonded=atom.GetDegree() > 0))
     bonds = [_Bond(b.GetBeginAtomIdx(), b.GetEndAtomIdx(), _ORDERS.get(b.GetBondType(), "1"),
@@ -596,21 +621,48 @@ class _Plus(_Item):
         self.ids = [doc.text(x + self.width / 2, line + _CENTRE_DROP, "+")]
 
 
-def _wrap(text: Text, limit: float = MAX_LINE_WIDTH) -> list[Text]:
-    """Split a line wider than ``limit`` after ", " (the comma stays)."""
-    if text_width(text.text) <= limit or ", " not in text.text:
-        return [text]
-    pieces = text.text.split(", ")
+def _fill(pieces: list[str], joiner: str, tail: str, limit: float) -> list[str]:
+    """Join ``pieces`` with ``joiner`` into lines of at most ``limit``; a line
+    that is continued ends with ``tail``."""
     lines: list[str] = []
     current = pieces[0]
     for piece in pieces[1:]:
-        candidate = f"{current}, {piece}"
+        candidate = f"{current}{joiner}{piece}"
         if text_width(candidate) <= limit:
             current = candidate
         else:
-            lines.append(current + ",")
+            lines.append(current + tail)
             current = piece
     lines.append(current)
+    return lines
+
+
+def _cut(word: str, limit: float) -> list[str]:
+    """A word wider than ``limit`` in pieces that fit."""
+    pieces, current = [], ""
+    for ch in word:
+        if current and text_width(current + ch) > limit:
+            pieces.append(current)
+            current = ch
+        else:
+            current += ch
+    return pieces + [current]
+
+
+def _wrap(text: Text, limit: float = MAX_LINE_WIDTH) -> list[Text]:
+    """Split a line wider than ``limit``: after ", " where it has one (the
+    comma stays), and what is still too wide (free text: what was read from a
+    picture or typed by the user) at its spaces. A single word wider than
+    ``limit`` is cut."""
+    if text_width(text.text) <= limit:
+        return [text]
+    lines: list[str] = []
+    for line in _fill(text.text.split(", "), ", ", ",", limit):
+        if text_width(line) <= limit:
+            lines.append(line)
+            continue
+        words = [piece for word in line.split(" ") if word for piece in _cut(word, limit)]
+        lines.extend(_fill(words, " ", "", limit) if words else [line])
     return [Text(line, text.formula) for line in lines]
 
 
@@ -695,7 +747,7 @@ class _Row:
 class _StepParts:
     reactants: list[_Item]
     arrow: _Arrow
-    product: _Compound
+    products: list[_Item]
 
 
 def _joined(compounds: list[_Item], lead: bool) -> list[_Item]:
@@ -740,7 +792,7 @@ def _layout(route: Route) -> tuple[list[_Row], list[_StepParts]]:
             rows.append(row)
             row.add(_joined(compounds, lead=False) + [arrow, product])
             reactants = compounds
-        parts.append(_StepParts(reactants, arrow, product))
+        parts.append(_StepParts(reactants, arrow, [product]))
         last = product
     if not route.steps:
         row = _Row()
@@ -762,6 +814,87 @@ def _without(participants: tuple[Participant, ...], shared: Participant) -> list
 def render_route(route: Route) -> str:
     """The CDXML document (text) of ``route``. Pure and deterministic."""
     rows, parts = _layout(route)
+    return _document(rows, parts)
+
+
+@dataclass(frozen=True)
+class ReactionStep:
+    """One step for :func:`render_reaction`: molfiles by role and the lines
+    written at the arrow."""
+
+    reactants: tuple[str, ...]
+    agents: tuple[str, ...] = ()
+    products: tuple[str, ...] = ()
+    conditions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _Texts:
+    """What :class:`_Arrow` reads from a step."""
+
+    above: tuple[Text, ...]
+    below: tuple[Text, ...]
+
+
+def _same_compound(a: Participant, b: Participant) -> bool:
+    return a.key == b.key
+
+
+def render_reaction(steps: "list[ReactionStep] | tuple[ReactionStep, ...]") -> str:
+    """The CDXML document (text) of reaction steps given as molfiles: for each
+    step its reactants joined by "+", the arrow, its products joined by "+".
+    Pure and deterministic.
+
+    * ``agents`` are drawn over the arrow (ChemDraw reads structures there as
+      the middle part of the reaction, "A>B>C").
+    * ``conditions``: without agents the first line is written above the
+      arrow and the others below it; with agents all lines are below. Digit
+      runs after a letter or ")" are subscripts ("K2CO3").
+    * Consecutive steps: a step whose ONLY reactant is the ONLY product of the
+      step before (the same structure) continues that row from the drawing
+      already there, as long as the row fits the slide. Every other step
+      starts a new row, so ChemDraw, which reads a row by its geometry, never
+      takes the reactants of one step for products of the step before.
+    * A molfile that cannot be read is written as "?".
+    """
+    from .routes import inchikey_of
+
+    def participant(molfile: str) -> Participant:
+        key = inchikey_of(molfile)
+        return Participant(key=f"ik:{key}" if key else f"mf:{molfile}", molfile=molfile,
+                           name="?", label=None)
+
+    rows: list[_Row] = []
+    parts: list[_StepParts] = []
+    last: _Compound | None = None      # the single product drawn last in rows[-1]
+    for step in steps:
+        lines = [Text(line, True) for line in step.conditions]
+        over = [_Compound(participant(m)) for m in step.agents]
+        texts = _Texts((), tuple(lines)) if over else _Texts(tuple(lines[:1]), tuple(lines[1:]))
+        arrow = _Arrow(texts, over=over)       # type: ignore[arg-type]
+        reactants = [participant(m) for m in step.reactants]
+        products: list[_Item] = [_Compound(participant(m)) for m in step.products]
+        tail: list[_Item] = [arrow] + _joined(products, lead=False)
+        continued = (last is not None and len(reactants) == 1
+                     and _same_compound(reactants[0], last.participant)
+                     and rows[-1].width + rows[-1].extra_width(tail) <= MAX_ROW_WIDTH)
+        drawn: list[_Item]
+        if continued and last is not None:
+            rows[-1].add(tail)
+            drawn = [last]
+        else:
+            drawn = [_Compound(p) for p in reactants]
+            row = _Row()
+            rows.append(row)
+            row.add(_joined(drawn, lead=False) + tail)
+        parts.append(_StepParts(drawn, arrow, products))
+        only = products[0] if len(products) == 1 else None
+        last = only if isinstance(only, _Compound) else None
+    return _document(rows, parts)
+
+
+def _document(rows: list[_Row], parts: list[_StepParts]) -> str:
+    """The CDXML text of laid-out rows and their steps."""
     doc = _Doc()
     for row, top in zip(rows, _row_tops(rows)):
         up = max(item.up for item in row.items)
@@ -780,7 +913,7 @@ def render_route(route: Route) -> str:
     for part in parts:
         attrs = {
             "ReactionStepReactants": [i for item in part.reactants for i in item.ids],
-            "ReactionStepProducts": part.product.ids,
+            "ReactionStepProducts": [i for item in part.products for i in item.ids],
             "ReactionStepArrows": part.arrow.ids,
             "ReactionStepObjectsAboveArrow": part.arrow.over_ids + part.arrow.above_ids,
             "ReactionStepObjectsBelowArrow": part.arrow.below_ids,

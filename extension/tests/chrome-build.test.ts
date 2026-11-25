@@ -5,7 +5,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { CHROME_EXTENSION_ID, COMPOUNDS_PAGE, EXTENSION_ID, PAGE_OPS, SITE_ORIGIN } from "../src/shared/protocol";
+import { CAPTURE_OPS, CAPTURE_PAGE, CHROME_EXTENSION_ID, COMPOUNDS_PAGE, EXTENSION_ID, PAGE_OPS, POPUP_PAGE, SITE_ORIGIN } from "../src/shared/protocol";
 import { chromeExtensionIdFromKey, chromeManifest, iconMap, MINIMUM_CHROME_VERSION } from "../scripts/chrome-manifest.mjs";
 import { DEFAULT_ELN_ORIGIN } from "../scripts/eln-origin.mjs";
 import { ICON_SIZES, iconPath, iconPng } from "../scripts/make-icons.mjs";
@@ -55,6 +55,7 @@ describe("Chrome manifest transform", () => {
       "host_permissions",
       "action",
       "background",
+      "commands",
       "content_scripts",
     ]);
     expect(chrome.manifest_version).toBe(3);
@@ -63,20 +64,21 @@ describe("Chrome manifest transform", () => {
     expect(JSON.stringify(chrome)).not.toMatch(/gecko|browser_specific_settings|default_area|\.svg/);
   });
 
-  it("keeps name, version, description, permissions and content scripts unchanged", () => {
-    for (const key of ["name", "version", "description", "permissions", "host_permissions", "content_scripts"]) {
+  it("keeps name, version, description, permissions, the shortcut and content scripts unchanged", () => {
+    for (const key of ["name", "version", "description", "permissions", "host_permissions", "commands", "content_scripts"]) {
       expect(chrome[key], key).toEqual(firefoxManifest[key]);
     }
-    expect(chrome.permissions).toEqual(["nativeMessaging"]);
+    expect(chrome.permissions).toEqual(["nativeMessaging", "activeTab"]);
+    expect(Object.keys(chrome.commands)).toEqual(["capture-reaction"]);
     expect(chrome.host_permissions).toEqual([`${SITE_ORIGIN}/*`]);
     // The page bridge stays in the page's own world.
     expect(chrome.content_scripts[0]).toMatchObject({ js: ["page-bridge.js"], world: "MAIN" });
     expect(chrome.content_scripts[1].world).toBeUndefined();
   });
 
-  it("runs the background as a service worker and the toolbar button with PNG icons", () => {
+  it("runs the background as a service worker and the toolbar button with PNG icons and the same popup", () => {
     expect(chrome.background).toEqual({ service_worker: "background.js" });
-    expect(chrome.action).toEqual({ default_title: firefoxManifest.action.default_title, default_icon: iconMap() });
+    expect(chrome.action).toEqual({ default_title: firefoxManifest.action.default_title, default_icon: iconMap(), default_popup: POPUP_PAGE });
     expect(chrome.icons).toEqual({
       16: "icons/icon-16.png",
       32: "icons/icon-32.png",
@@ -103,8 +105,9 @@ describe("Chrome manifest transform", () => {
       /web_accessible_resources/,
     );
     expect(() =>
-      chromeManifest({ ...firefoxManifest, action: { ...firefoxManifest.action, default_popup: "p.html" } }, chromeKey),
-    ).toThrow(/default_popup/);
+      chromeManifest({ ...firefoxManifest, action: { ...firefoxManifest.action, browser_style: true } }, chromeKey),
+    ).toThrow(/browser_style/);
+    expect(() => chromeManifest({ ...firefoxManifest, options_ui: { page: "o.html" } }, chromeKey)).toThrow(/options_ui/);
     expect(() => chromeManifest(firefoxManifest, { key: chromeKey.key, id: "a".repeat(32) })).toThrow(/gives the ID/);
     expect(() => chromeManifest(firefoxManifest, { id: CHROME_EXTENSION_ID } as never)).toThrow(/chrome-key/);
     expect(() => chromeManifest({ ...firefoxManifest, background: { page: "b.html" } }, chromeKey)).toThrow(/background/);
@@ -163,6 +166,9 @@ describe("the builds", () => {
     expect(filesUnder(chromeDir)).toEqual(
       [
         "background.js",
+        "capture.css",
+        "capture.html",
+        "capture.js",
         "compounds-icon.svg",
         "compounds.css",
         "compounds.html",
@@ -170,6 +176,9 @@ describe("the builds", () => {
         "content.js",
         "manifest.json",
         "page-bridge.js",
+        "popup.css",
+        "popup.html",
+        "popup.js",
         ...ICON_SIZES.map((s) => iconPath(s)),
       ].sort(),
     );
@@ -178,9 +187,15 @@ describe("the builds", () => {
       ...manifest.content_scripts.flatMap((c: { js: string[] }) => c.js),
       ...Object.values(manifest.icons),
       ...Object.values(manifest.action.default_icon),
+      manifest.action.default_popup,
       COMPOUNDS_PAGE,
       "compounds.css",
       "compounds.js",
+      CAPTURE_PAGE,
+      "capture.css",
+      "capture.js",
+      "popup.css",
+      "popup.js",
     ] as string[];
     for (const name of referenced) expect(existsSync(join(chromeDir, ...name.split("/"))), name).toBe(true);
     for (const size of ICON_SIZES) {
@@ -189,7 +204,7 @@ describe("the builds", () => {
   });
 
   it("replaces browser with chrome at build time in the Chrome bundles that use extension APIs", () => {
-    for (const name of ["background.js", "content.js", "compounds.js"]) {
+    for (const name of ["background.js", "content.js", "compounds.js", "capture.js", "popup.js"]) {
       const text = readFileSync(join(chromeDir, name), "utf8");
       expect(text.startsWith('"use strict";\n(() => {'), name).toBe(true);
       expect(text, name).toContain("chrome.runtime.");
@@ -257,15 +272,38 @@ describe("the builds", () => {
   });
 
   it("leaves the Firefox build without a shim, and its manifest for the default ELN address is static/manifest.json", () => {
-    for (const name of ["background.js", "content.js", "compounds.js", "page-bridge.js"]) {
+    for (const name of ["background.js", "content.js", "compounds.js", "capture.js", "popup.js", "page-bridge.js"]) {
       const text = readFileSync(join(firefoxDir, name), "utf8");
       expect(text, name).not.toContain("globalThis.browser");
       expect(text.startsWith('"use strict";\n(() => {'), name).toBe(true);
     }
     expect(readFileSync(join(firefoxDir, "manifest.json"), "utf8")).toBe(firefoxManifestText);
     expect(filesUnder(firefoxDir)).toEqual(
-      ["background.js", "compounds-icon.svg", "compounds.css", "compounds.html", "compounds.js", "content.js", "manifest.json", "page-bridge.js"],
+      [
+        "background.js", "capture.css", "capture.html", "capture.js", "compounds-icon.svg", "compounds.css", "compounds.html",
+        "compounds.js", "content.js", "manifest.json", "page-bridge.js", "popup.css", "popup.html", "popup.js",
+      ],
     );
+  });
+
+  it("bundles openchemlib into the compounds page and the capture page only", () => {
+    for (const dir of [chromeDir, firefoxDir]) {
+      for (const name of ["compounds.js", "capture.js"]) expect(readFileSync(join(dir, name), "utf8"), name).toContain("CanvasEditor");
+      for (const name of ["background.js", "content.js", "page-bridge.js", "popup.js"]) {
+        const text = readFileSync(join(dir, name), "utf8");
+        expect(text, name).not.toContain("CanvasEditor");
+        expect(text.length, name).toBeLessThan(1_000_000);
+      }
+    }
+  });
+
+  it("the background and the popup of either build use no fetch, no socket and no storage", () => {
+    for (const dir of [chromeDir, firefoxDir]) {
+      for (const name of ["background.js", "popup.js"]) {
+        const text = readFileSync(join(dir, name), "utf8");
+        expect(text, name).not.toMatch(/\bfetch\(|\bXMLHttpRequest\b|\bWebSocket\b|\.storage\.(local|sync|session)\b|\blocalStorage\b|\bsessionStorage\b/);
+      }
+    }
   });
 
   it("the Chrome service worker answers through sendResponse with chrome.* only", async () => {
@@ -273,6 +311,9 @@ describe("the builds", () => {
     const posted: Array<{ id: string; op: string }> = [];
     const portListeners: Array<(m: unknown) => void> = [];
     const created: string[] = [];
+    let connects = 0;
+    let captures = 0;
+    const SHOT = "data:image/png;base64,iVBORw0KGgo=";
     const chrome = {
       runtime: {
         id: CHROME_EXTENSION_ID,
@@ -280,6 +321,7 @@ describe("the builds", () => {
         getURL: (path: string) => `chrome-extension://${CHROME_EXTENSION_ID}/${path}`,
         connectNative: (name: string) => {
           expect(name).toBe("compound_registry");
+          connects += 1;
           return {
             postMessage: (m: { id: string; op: string }) => {
               posted.push(m);
@@ -298,8 +340,14 @@ describe("the builds", () => {
           created.push(url);
           return {};
         },
+        captureVisibleTab: async (windowId: unknown, options: unknown) => {
+          expect(windowId).toBeUndefined();
+          expect(options).toEqual({ format: "png" });
+          captures += 1;
+          return SHOT;
+        },
       },
-      action: { onClicked: { addListener: () => {} } },
+      // No chrome.commands in this fake: the script must start without it.
     };
     // A decoy `browser` global: the bundle must use `chrome` and never read it.
     const browser = { runtime: {} };
@@ -329,6 +377,33 @@ describe("the builds", () => {
     expect(
       await ask({ type: "open-compounds" }, { id: "another-extension", url: site.url }),
     ).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+
+    // "Capture reaction": the popup starts it, the capture page fetches the picture once
+    // and reaches the host over a second connection.
+    const popup = { id: CHROME_EXTENSION_ID, url: `chrome-extension://${CHROME_EXTENSION_ID}/${POPUP_PAGE}` };
+    const capturePage = { id: CHROME_EXTENSION_ID, url: `chrome-extension://${CHROME_EXTENSION_ID}/${CAPTURE_PAGE}?id=x` };
+    expect(connects).toBe(1);
+    expect(await ask({ type: "capture-start" }, site)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    expect(await ask({ type: "capture-start" }, page)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    expect(captures).toBe(0);
+    expect(await ask({ type: "capture-start" }, popup)).toEqual({ ok: true });
+    expect(captures).toBe(1);
+    expect(created).toHaveLength(2);
+    const [address, query] = created[1]!.split("?");
+    expect(address).toBe(`chrome-extension://${CHROME_EXTENSION_ID}/${CAPTURE_PAGE}`);
+    const id = new URLSearchParams(query).get("id")!;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await ask({ type: "capture-image", id }, page)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    expect(await ask({ type: "capture-image", id: "wrong" }, capturePage)).toMatchObject({ ok: false, error: { code: "capture_expired" } });
+    expect(await ask({ type: "capture-image", id }, capturePage)).toEqual({ ok: true, result: { image: SHOT } });
+    expect(await ask({ type: "capture-image", id }, capturePage)).toMatchObject({ ok: false, error: { code: "capture_expired" } });
+
+    expect(await ask({ type: "host-request", op: CAPTURE_OPS[0], params: {} }, page)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    await ask({ type: "host-request", op: CAPTURE_OPS[0], params: { start: true } }, capturePage);
+    expect(posted.map((m) => m.op)).toEqual([PAGE_OPS[0], CAPTURE_OPS[0]]);
+    expect(connects).toBe(2);
+    expect(await ask({ type: "host-request", op: PAGE_OPS[0], params: {} }, capturePage)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
+    expect(await ask({ type: "host-request", op: "ping", params: {} }, popup)).toMatchObject({ ok: false, error: { code: "not_allowed" } });
   });
 
   it("the Chrome service worker names Chrome, not Firefox, when the host cannot be reached", async () => {
@@ -344,7 +419,6 @@ describe("the builds", () => {
         onMessage: { addListener: (l: (typeof listeners)[number]) => listeners.push(l) },
       },
       tabs: { create: async () => ({}) },
-      action: { onClicked: { addListener: () => {} } },
     };
     const context = vm.createContext({ chrome, console, crypto: globalThis.crypto, setTimeout, clearTimeout, URL, queueMicrotask });
     new vm.Script(readFileSync(join(chromeDir, "background.js"), "utf8")).runInContext(context);
@@ -397,7 +471,6 @@ describe("the background script (source)", () => {
         ...(withSuspend ? { onSuspend: { addListener: (l: () => void) => suspend.push(l) } } : {}),
       },
       tabs: { create: async () => ({}) },
-      action: { onClicked: { addListener: () => {} } },
     });
     vi.resetModules();
     await import("../src/background/index");

@@ -66,6 +66,15 @@ _NODE_NEEDS = "20.19 or newer (of the 20 series), or 22.12 or newer"
 _UPDATE_HINT = ("To update later: get the new version of the project folder, then run "
                 "update.ps1 (Windows: double-click update.cmd) or 'sh update.sh' "
                 "(macOS/Linux).")
+#: The name and size of the optional recognition part. The installer asks
+#: before it downloads it, and never downloads it in a run that asks nothing
+#: (unless ``--recognition yes`` says so).
+RECOGNISER_NAME = "ChemRecogniser"
+RECOGNISER_SIZE = "about 2.8 GB"
+_RECOGNITION_HINT = (f"Optional: {RECOGNISER_NAME} ('Capture reaction': reading a drawn reaction "
+                     f"scheme from the screen) is not installed. It needs {RECOGNISER_SIZE} "
+                     "on disk. To install it later, run 'compound-registry "
+                     "install-recognition'.")
 _RELEASES = "https://github.com/smalljet-lab/ChemLinker/releases"
 
 Run = Callable[[Sequence[str], Path], "tuple[int, str]"]
@@ -84,6 +93,7 @@ class Options:
     id_format: str | None = None
     create_registry: bool = False
     mnova: str | None = None            # yes | no
+    recognition: str | None = None      # yes | no
     skip_extension: bool = False
     force: bool = False
     yes: bool = False
@@ -115,6 +125,18 @@ def _mnova_install() -> dict[str, Any]:
     from . import mnova
 
     return mnova.install()
+
+
+def _recognition_status() -> dict[str, Any]:
+    from . import recognition
+
+    return recognition.install_state()
+
+
+def _recognition_install(say: Callable[[str], None]) -> dict[str, Any]:
+    from . import recognition_install
+
+    return recognition_install.install(tools=recognition_install.Tools(say=say))
 
 
 def _upgrade_registry(home: str) -> dict[str, Any]:
@@ -160,6 +182,10 @@ class Environment:
     upgrade_registry: Callable[[str], dict[str, Any]] = _upgrade_registry
     create_registry: Callable[[str, "str | None"], list[str]] = _create_registry
     install: Callable[..., dict[str, Any]] = install_host.install
+    #: The optional ChemRecogniser: ``() -> {"installed", "home", "problem"}``
+    #: and ``(say) -> result`` (downloads about 2.8 GB when it is not there).
+    recognition_status: Callable[[], dict[str, Any]] = _recognition_status
+    recognition_install: Callable[[Callable[[str], None]], dict[str, Any]] = _recognition_install
 
 
 def real_environment(ask: Callable[[str], str], say: Callable[[str], None],
@@ -474,6 +500,7 @@ class _Plan:
     save_eln: bool = False
     build: bool = False
     mnova: bool = False
+    recognition: bool = False
     notes: list[str] = field(default_factory=list)
 
 
@@ -804,6 +831,55 @@ def _choose_mnova(options: Options, env: Environment, plan: _Plan) -> dict[str, 
     return status
 
 
+def _recognition_started(status: dict[str, Any]) -> bool:
+    """Whether the recognition folder exists at all (an installation that was
+    begun), as opposed to never installed."""
+    home = status.get("home")
+    try:
+        return bool(home) and Path(home).is_dir()
+    except OSError:
+        return False
+
+
+def _choose_recognition(options: Options, env: Environment, plan: _Plan) -> dict[str, Any]:
+    """Question 5: the optional ChemRecogniser ("Capture reaction"). It is a
+    large download, so a run that asks nothing never starts it by itself:
+    ``--yes`` leaves it out, ``--upgrade`` only brings an existing one up to
+    date."""
+    say = env.say
+    try:
+        status = env.recognition_status()
+    except Exception as exc:  # noqa: BLE001 - an optional part must not stop the installation
+        say(f"  warning: {RECOGNISER_NAME} could not be looked for ({type(exc).__name__}: {exc}).")
+        status = {"installed": False, "home": None, "problem": None}
+    installed = bool(status.get("installed"))
+    # Begun but incomplete, or made for an older version: worth repairing.
+    present = installed or _recognition_started(status)
+    if options.recognition == "no":
+        return status
+    if options.recognition == "yes":
+        plan.recognition = True
+        return status
+    if not options.asks:
+        plan.recognition = options.upgrade and present
+        return status
+    say("")
+    say(f"{RECOGNISER_NAME} reads a drawn reaction scheme from a picture of the screen and")
+    say("gives the SMILES of its compounds ('Capture reaction' in the extension). It is")
+    say(f"optional and runs on this PC only. Size of the install: {RECOGNISER_SIZE} on disk,")
+    say("most of it downloaded now; it uses about 2.5 GB of memory while it runs.")
+    if installed:
+        say("It is installed already; it has to match this program version.")
+        question = f"Bring {RECOGNISER_NAME} up to date?"
+    elif present:
+        say(f"An installation was found but is not complete: {status.get('problem')}.")
+        question = f"Complete the installation of {RECOGNISER_NAME}?"
+    else:
+        question = f"Install {RECOGNISER_NAME} ({RECOGNISER_SIZE})?"
+    plan.recognition = _ask_yes_no(env, question, present)
+    return status
+
+
 # --------------------------------------------------------------------------- the actions
 
 def _write_local_config(root: Path, origin: str) -> Path:
@@ -923,6 +999,9 @@ def _show_plan(env: Environment, plan: _Plan, dry_run: bool) -> None:
         say(f"  - save the ELN address {plan.eln_origin} for the next build of the extension")
     if plan.mnova:
         say("  - install the MestReNova add-on (or bring it up to date)")
+    if plan.recognition:
+        say(f"  - install {RECOGNISER_NAME} (or bring it up to date): {RECOGNISER_SIZE} on disk, "
+            "downloaded from the internet if it is not there yet")
     for note in plan.notes:
         say(f"  note: {note}")
 
@@ -971,6 +1050,7 @@ def run_setup(options: Options, env: Environment) -> int:
     _choose_browsers(options, env, now, target, plan)
     _choose_eln(options, env, plan)
     _choose_mnova(options, env, plan)
+    recognition_now = _choose_recognition(options, env, plan)
     _show_plan(env, plan, options.dry_run)
     if options.asks and not options.dry_run and not _ask_yes_no(env, "Continue?", True):
         raise _Cancelled("Stopped before anything was changed.")
@@ -989,6 +1069,9 @@ def run_setup(options: Options, env: Environment) -> int:
             _build_extension(env, plan, dry_run=True)
         if plan.mnova:
             say("Would install the MestReNova add-on into the script folder of MestReNova.")
+        if plan.recognition:
+            say(f"Would install {RECOGNISER_NAME} ({RECOGNISER_SIZE}) into "
+                f"{recognition_now.get('home') or 'its folder'}.")
         if not plan.create:
             say(f"Would check the stored structures of the registry in {plan.home} if the "
                 "chemistry version changed.")
@@ -1063,7 +1146,27 @@ def run_setup(options: Options, env: Environment) -> int:
             done = "was brought up to date" if installed.get("replaced") else "was installed"
             say(f"The MestReNova add-on {done} in {installed.get('scripts_dir')}.")
 
-    # 5. The structures of an existing registry, after a change of the chemistry.
+    # 5. The optional ChemRecogniser (a long download; it reports its own progress).
+    recognition_done = bool(recognition_now.get("installed"))
+    if plan.recognition:
+        say("")
+        say(f"Installing {RECOGNISER_NAME} ({RECOGNISER_SIZE}). This can take a while; it can "
+            "be interrupted and repeated.")
+        try:
+            env.recognition_install(say)
+        except RegistryError as exc:
+            recognition_done = False
+            say(f"  warning: {RECOGNISER_NAME} was not installed: {exc.message}")
+            say("  Everything else is installed. To try again later, run "
+                "'compound-registry install-recognition'.")
+        except Exception as exc:  # noqa: BLE001 - an optional part must not stop the installation
+            recognition_done = False
+            say(f"  warning: {RECOGNISER_NAME} was not installed ({type(exc).__name__}: {exc}).")
+        else:
+            recognition_done = True
+            say(f"{RECOGNISER_NAME} is installed.")
+
+    # 6. The structures of an existing registry, after a change of the chemistry.
     if not plan.create:
         try:
             check = env.upgrade_registry(plan.home)
@@ -1072,7 +1175,7 @@ def run_setup(options: Options, env: Environment) -> int:
         else:
             say(f"Registry check: {check.get('message')}")
 
-    # 6. What is left.
+    # 7. What is left.
     say("")
     say("What to do now:")
     for line in next_steps(plan.browsers, root=root, build_note=build_note,
@@ -1080,4 +1183,6 @@ def run_setup(options: Options, env: Environment) -> int:
         say(line)
     say("")
     say(_UPDATE_HINT)
+    if not recognition_done:
+        say(_RECOGNITION_HINT)
     return 1 if build_failed else 0

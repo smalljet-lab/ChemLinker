@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChemLinker",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Looks up and issues permanent compound IDs from the local compound registry while you work in the Sciformation ELN.",
   "browser_specific_settings": {
     "gecko": {
@@ -15,20 +15,30 @@
     }
   },
   "permissions": [
-    "nativeMessaging"
+    "nativeMessaging",
+    "activeTab"
   ],
   "host_permissions": [
     "https://sciformation.chemie.unibas.ch/*"
   ],
   "action": {
-    "default_title": "All compounds (ChemLinker)",
+    "default_title": "ChemLinker",
     "default_icon": "compounds-icon.svg",
-    "default_area": "navbar"
+    "default_area": "navbar",
+    "default_popup": "popup.html"
   },
   "background": {
     "scripts": [
       "background.js"
     ]
+  },
+  "commands": {
+    "capture-reaction": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Capture reaction: read a drawn reaction from the current tab"
+    }
   },
   "content_scripts": [
     {

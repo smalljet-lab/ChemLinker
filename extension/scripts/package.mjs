@@ -77,9 +77,10 @@ function runBuild(root, target, elnOrigin) {
   if (result.status !== 0) throw new Error(`the build failed (exit code ${result.status}); nothing was packaged`);
 }
 
-/** Every file the manifest and the compounds page load. */
+/** Every file the manifest and the extension's pages load. The popup and the capture page it starts belong together. */
 function requiredFiles(manifest) {
   const icon = manifest.action?.default_icon;
+  const popup = manifest.action?.default_popup;
   return new Set([
     ...(manifest.background?.scripts ?? []),
     ...(manifest.background?.service_worker ? [manifest.background.service_worker] : []),
@@ -89,6 +90,7 @@ function requiredFiles(manifest) {
     "compounds.html",
     "compounds.css",
     "compounds.js",
+    ...(popup ? [popup, "popup.css", "popup.js", "capture.html", "capture.css", "capture.js"] : []),
   ]);
 }
 

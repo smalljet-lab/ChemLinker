@@ -1,5 +1,6 @@
-// Bundles the background script, the content script, the page bridge and the
-// compounds page and copies the manifest and the page's static files.
+// Bundles the background script, the content script, the page bridge, the
+// compounds page, the capture page and the toolbar popup and copies the
+// manifest and the pages' static files.
 //
 //   npm run build          Firefox: dist/ (target firefox140), packaged as the .xpi
 //   npm run build:chrome   Chrome:  ../chrome-extension/ (target chrome120), a
@@ -39,11 +40,15 @@ const chrome = args.chrome;
 const dist = args.out ? resolve(args.out) : chrome ? resolve(root, "..", "chrome-extension") : join(root, "dist");
 
 /** Copied unchanged from static/ next to the bundles. */
-const STATIC_FILES = ["compounds.html", "compounds.css", "compounds-icon.svg"];
+const STATIC_FILES = [
+  "compounds.html", "compounds.css", "compounds-icon.svg",
+  "capture.html", "capture.css",
+  "popup.html", "popup.css",
+];
 
 /**
  * In the Chrome bundles that talk to extension APIs (background, content script,
- * compounds page) esbuild replaces every free `browser` identifier with `chrome`:
+ * compounds page, capture page, popup) esbuild replaces every free `browser` identifier with `chrome`:
  * Chrome MV3's `chrome` namespace returns promises like Firefox's `browser`.
  * A compile-time replacement, not a runtime `globalThis.browser ??= chrome`:
  * Chrome has no `browser` global, so in the content script an ELN element with
@@ -53,7 +58,7 @@ const STATIC_FILES = ["compounds.html", "compounds.css", "compounds-icon.svg"];
  */
 const CHROME_BROWSER_DEFINE = { browser: "chrome" };
 
-const BUNDLES = ["background.js", "content.js", "page-bridge.js", "compounds.js"];
+const BUNDLES = ["background.js", "content.js", "page-bridge.js", "compounds.js", "capture.js", "popup.js"];
 const ICONS = ICON_SIZES.map((size) => iconPath(size));
 
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -145,7 +150,7 @@ const extensionApi = { define: chrome ? { ...SETTINGS_DEFINE, ...CHROME_BROWSER_
 /** Options of the page bridge: the settings only. */
 const pageWorld = { define: SETTINGS_DEFINE };
 
-/** OpenChemLib (the structure editor) belongs in compounds.js and nowhere else. */
+/** OpenChemLib (the structure editor) belongs in compounds.js and capture.js and nowhere else. */
 const OCL = /node_modules[\\/]openchemlib[\\/]/;
 function checkOcl(result, outfile, wanted) {
   const has = Object.keys(result.metafile.inputs).some((input) => OCL.test(input));
@@ -174,6 +179,14 @@ await bundle(
   },
   true,
 );
+await bundle(
+  ["src", "capture", "index.ts"],
+  "capture.js",
+  // The same openchemlib as in compounds.js: see there.
+  { ...extensionApi, logOverride: { "empty-import-meta": "silent" } },
+  true,
+);
+await bundle(["src", "popup", "index.ts"], "popup.js", extensionApi);
 
 for (const name of STATIC_FILES) await copyFile(join(root, "static", name), join(dist, name));
 if (chrome) {
@@ -182,7 +195,7 @@ if (chrome) {
 }
 await writeFile(join(dist, "manifest.json"), `${JSON.stringify(outManifest, null, 2)}\n`);
 
-// Everything the manifest and the compounds page load must be there.
+// Everything the manifest and the extension's pages load must be there.
 const required = new Set([
   ...(outManifest.background.scripts ?? []),
   ...(outManifest.background.service_worker ? [outManifest.background.service_worker] : []),
@@ -191,9 +204,16 @@ const required = new Set([
   ...(typeof outManifest.action?.default_icon === "string"
     ? [outManifest.action.default_icon]
     : Object.values(outManifest.action?.default_icon ?? {})),
+  ...(outManifest.action?.default_popup ? [outManifest.action.default_popup] : []),
   "compounds.html",
   "compounds.css",
   "compounds.js",
+  "capture.html",
+  "capture.css",
+  "capture.js",
+  "popup.html",
+  "popup.css",
+  "popup.js",
 ]);
 for (const name of required) {
   const info = await stat(join(dist, ...name.split("/"))).catch(() => null);

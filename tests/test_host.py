@@ -510,7 +510,12 @@ def test_other_ops_get_response_too_large(choice):
 
 
 def test_every_protocol_op_is_served():
-    assert set(host._OPERATIONS) == set(protocol.OPS)
+    # The operations of "Capture reaction" need no registry and have their own
+    # handlers (tests/test_recognition.py).
+    from compound_registry import recognition
+
+    assert set(host._OPERATIONS) | set(recognition.OPERATIONS) == set(protocol.OPS)
+    assert set(recognition.OPERATIONS) == set(protocol.CAPTURE_OPS)
 
 
 def test_large_route_answer_drops_the_document_but_keeps_the_file():

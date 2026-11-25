@@ -22,6 +22,11 @@ The protocol (framing, requests, responses, error codes) is specified in
   and closes it afterwards: the service caches its journal and chemistry
   checks per instance, and the CLI (``recover``, ``retire``, a restore) may
   change the registry while the browser keeps the host alive.
+* The operations of ``protocol.CAPTURE_OPS`` ("Capture reaction") are the
+  exception: they need no registry, so none is opened for them and they are
+  answered even when the registry is missing or the host configuration is
+  invalid (:mod:`compound_registry.recognition`). The recognition worker they
+  start is stopped when the host ends.
 * The host NEVER creates a registry (or its home folder, not even for the
   log): a missing ``config.toml`` or database is answered with
   ``registry_missing``. Before every request the home is decided again; if
@@ -42,6 +47,7 @@ import logging.handlers
 import os
 import struct
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass
@@ -433,6 +439,25 @@ _OPERATIONS = {"ping": _op_ping, "analyze": _op_analyze, "register": _op_registe
                "set_limiting": _op_set_limiting}
 
 
+def _capture_operation(op: str, params: dict[str, Any]) -> dict[str, Any]:
+    """One operation of ``protocol.CAPTURE_OPS`` ("Capture reaction"). These
+    need no registry: none is opened, and the host configuration is not even
+    looked at, so they never answer ``registry_missing``."""
+    from . import recognition   # RDKit: imported only once stdout is safe
+
+    return recognition.OPERATIONS[op](params)
+
+
+def _stop_recognition() -> None:
+    """Stop the recognition worker of this host, if one was started."""
+    module = sys.modules.get(__package__ + ".recognition")
+    if module is not None:
+        try:
+            module.shutdown()
+        except Exception:  # noqa: BLE001 - ending the host never fails on this
+            pass
+
+
 # --------------------------------------------------------------------------- one message
 
 @dataclass
@@ -463,13 +488,16 @@ def handle_message(body: bytes, choice: HomeChoice, *, open_service: OpenService
 
     outcome = _Outcome({}, request.op, request.id)
     try:
-        if choice.error is not None:
-            raise choice.error
-        svc = (open_service or _default_open_service)(choice.home)
-        try:
-            result = _OPERATIONS[request.op](svc, request.params, choice)
-        finally:
-            svc.close()
+        if request.op in protocol.CAPTURE_OPS:
+            result = _capture_operation(request.op, request.params)
+        else:
+            if choice.error is not None:
+                raise choice.error
+            svc = (open_service or _default_open_service)(choice.home)
+            try:
+                result = _OPERATIONS[request.op](svc, request.params, choice)
+            finally:
+                svc.close()
         outcome.response = protocol.ok_response(request.id, result)
         if request.op in ("register", "retire"):
             outcome.full_id = result.get("id")
@@ -572,8 +600,62 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, choice: HomeChoice, *,
     ``resolve`` re-decides the home before every request; if the result
     differs from ``choice``, that request is answered with
     ``registry_changed`` and the loop ends, so the next connection starts
-    from the new configuration."""
+    from the new configuration.
+
+    Requests are answered one at a time and in order, with ONE exception:
+    ``recognize`` (10 to 60 seconds, minutes while the models load) is
+    answered from a thread of its own, so that the other capture operations
+    (the status of another capture page, a structure the user just edited) are
+    not kept waiting behind it beyond the time the extension gives them. Its
+    answer is therefore written when it is ready, possibly after the answers
+    of later requests; the extension matches answers by ``id``. At the end of
+    the input the loop waits for the recognitions still running."""
     log = log if log is not None else logging.getLogger(LOGGER_NAME)
+    write_lock = threading.Lock()
+    running: list[threading.Thread] = []
+
+    def answer(body: bytes) -> bool:
+        """Answer one request. False when the output is closed."""
+        started = time.perf_counter()
+        outcome = handle_message(body, choice, open_service=open_service, log=log)
+        try:
+            data, status = _encode(outcome.response, outcome.op, max_response_bytes,
+                                   outcome.full_id)
+        except (TypeError, ValueError) as exc:  # NaN, unpaired surrogate, odd type
+            _log_internal(log, outcome.op, outcome.request_id, exc)
+            data, status = _dumps(_internal_error(outcome.request_id)), "internal_error"
+        try:
+            with write_lock:
+                _write_frame(stdout, data)
+        except OSError:  # includes BrokenPipeError: Firefox went away
+            log.info("output closed while answering; stopping")
+            return False
+        # The ID is logged for register / retire, also when the answer was too
+        # large to send (the ID was issued all the same).
+        extra = f" full_id={outcome.full_id}" if outcome.full_id else ""
+        log.info("op=%s id=%r %s %.0f ms %d bytes%s", outcome.op, outcome.request_id, status,
+                 (time.perf_counter() - started) * 1000, len(data), extra)
+        return True
+
+    def answer_aside(body: bytes) -> None:
+        try:
+            answer(body)
+        except BaseException as exc:  # noqa: BLE001 - a thread must never print or raise
+            _log_internal(log, "recognize", None, exc)
+
+    try:
+        return _serve_loop(stdin, stdout, choice, max_request_bytes, log, resolve, write_lock,
+                           running, answer, answer_aside)
+    finally:
+        for thread in running:
+            thread.join()
+
+
+def _serve_loop(stdin: BinaryIO, stdout: BinaryIO, choice: HomeChoice, max_request_bytes: int,
+                log: logging.Logger, resolve: Callable[[], HomeChoice] | None,
+                write_lock: Any, running: list[threading.Thread],
+                answer: Callable[[bytes], bool], answer_aside: Callable[[bytes], None]) -> int:
+    """The loop of :func:`serve`."""
     while True:
         try:
             header = _read_exact(stdin, _HEADER.size)
@@ -588,10 +670,11 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, choice: HomeChoice, *,
                 log.error("request frame of %d bytes exceeds the limit of %d; stopping",
                           length, max_request_bytes)
                 try:
-                    _write_frame(stdout, _dumps(_error(
-                        None, "frame_too_large",
-                        f"The request is {length} bytes; the limit is {max_request_bytes}. "
-                        "The host stops because the rest of the input cannot be trusted.")))
+                    with write_lock:
+                        _write_frame(stdout, _dumps(_error(
+                            None, "frame_too_large",
+                            f"The request is {length} bytes; the limit is {max_request_bytes}. "
+                            "The host stops because the rest of the input cannot be trusted.")))
                 except OSError:
                     pass
                 return 1
@@ -603,42 +686,34 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, choice: HomeChoice, *,
             log.error("input ended inside a frame (%d of %d bytes)", len(body), length)
             return 1
 
-        if resolve is not None:
+        capture_op = _capture_op_of(body)
+        if resolve is not None and capture_op is None:
             changed = _changed_choice(choice, resolve)
             if changed is not None:
                 request_id = _request_id_of(body)
                 log.warning("op=? id=%r registry_changed (home source %s -> %s); stopping",
                             request_id, choice.source, changed.source)
                 try:
-                    _write_frame(stdout, _dumps(_error(
-                        request_id, "registry_changed",
-                        f"The registry configuration changed while the extension was "
-                        f"connected: it was {choice.describe()}, it is now "
-                        f"{changed.describe()}. Nothing was written. Reopen the panel or look "
-                        "the structure up again; the extension then uses the registry that is "
-                        "configured now.")))
+                    with write_lock:
+                        _write_frame(stdout, _dumps(_error(
+                            request_id, "registry_changed",
+                            f"The registry configuration changed while the extension was "
+                            f"connected: it was {choice.describe()}, it is now "
+                            f"{changed.describe()}. Nothing was written. Reopen the panel or "
+                            "look the structure up again; the extension then uses the registry "
+                            "that is configured now.")))
                 except OSError:
                     pass
                 return 0
 
-        started = time.perf_counter()
-        outcome = handle_message(body, choice, open_service=open_service, log=log)
-        try:
-            data, status = _encode(outcome.response, outcome.op, max_response_bytes,
-                                   outcome.full_id)
-        except (TypeError, ValueError) as exc:  # NaN, unpaired surrogate, odd type
-            _log_internal(log, outcome.op, outcome.request_id, exc)
-            data, status = _dumps(_internal_error(outcome.request_id)), "internal_error"
-        try:
-            _write_frame(stdout, data)
-        except OSError:  # includes BrokenPipeError: Firefox went away
-            log.info("output closed while answering; stopping")
+        running[:] = [thread for thread in running if thread.is_alive()]
+        if capture_op == "recognize" and len(running) < MAX_RECOGNITIONS_ASIDE:
+            thread = threading.Thread(target=answer_aside, args=(body,), daemon=True,
+                                      name="recognize")
+            running.append(thread)
+            thread.start()
+        elif not answer(body):
             return 0
-        # The ID is logged for register / retire, also when the answer was too
-        # large to send (the ID was issued all the same).
-        extra = f" full_id={outcome.full_id}" if outcome.full_id else ""
-        log.info("op=%s id=%r %s %.0f ms %d bytes%s", outcome.op, outcome.request_id, status,
-                 (time.perf_counter() - started) * 1000, len(data), extra)
 
 
 def _changed_choice(choice: HomeChoice, resolve: Callable[[], HomeChoice]) -> HomeChoice | None:
@@ -649,6 +724,24 @@ def _changed_choice(choice: HomeChoice, resolve: Callable[[], HomeChoice]) -> Ho
         current = HomeChoice(None, choice.source, error=ConfigError(
             f"The registry configuration could not be read ({type(exc).__name__})."))
     return None if current.identity() == choice.identity() else current
+
+
+#: At most this many ``recognize`` requests wait or run beside the loop; one
+#: more is answered in the loop itself, which then reads nothing until it is
+#: done. (The worker reads one picture at a time anyway.)
+MAX_RECOGNITIONS_ASIDE = 4
+
+
+def _capture_op_of(body: bytes) -> str | None:
+    """The operation, for a request that needs no registry (``CAPTURE_OPS``),
+    else None. A changed registry configuration is no reason to refuse such a
+    request (or to stop the host that owns the recognition worker)."""
+    message, problem = _decode(body)
+    if problem is None and isinstance(message, dict):
+        op = message.get("op")
+        if isinstance(op, str) and op in protocol.CAPTURE_OPS:
+            return op
+    return None
 
 
 def _request_id_of(body: bytes) -> str | int | None:
@@ -666,25 +759,37 @@ def _request_id_of(body: bytes) -> str | int | None:
 # --------------------------------------------------------------------------- process
 
 def _isolate_stdio() -> tuple[BinaryIO, BinaryIO]:
-    """Keep a private binary handle on fd 1 for frames, then point fd 1 at the
-    null device and ``sys.stdout`` at stderr, so neither ``print`` nor C-level
-    output can reach the protocol stream. Returns (frames_in, frames_out)."""
+    """Keep private binary handles on fd 0 and fd 1 for frames, then point
+    both at the null device and ``sys.stdout`` at stderr, so neither ``print``
+    nor C-level output can reach the protocol stream, and nothing but the
+    frame loop can touch the request pipe. Returns (frames_in, frames_out).
+
+    The input matters on Windows since ``recognize`` is answered from a thread
+    (:func:`serve`): while the loop waits for the next frame, any other call
+    on the same pipe handle blocks until a frame arrives. A library that looks
+    at the standard input while it is loaded (seen: numpy's import, in the
+    thread) would hang for good. With fd 0 on the null device it finds that
+    instead; the frames come through a duplicate nobody else knows."""
     try:
         sys.stdout.flush()
     except Exception:  # noqa: BLE001
         pass
     out_fd = os.dup(1)
+    in_fd = os.dup(0)
     if os.name == "nt":
         import msvcrt
 
-        msvcrt.setmode(0, os.O_BINARY)
+        msvcrt.setmode(in_fd, os.O_BINARY)
         msvcrt.setmode(out_fd, os.O_BINARY)
     null_fd = os.open(os.devnull, os.O_WRONLY)
     os.dup2(null_fd, 1)
     os.close(null_fd)
+    null_fd = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null_fd, 0)
+    os.close(null_fd)
     sys.stdout = sys.stderr if sys.stderr is not None else open(os.devnull, "w")
     frames_out = open(out_fd, "wb")             # buffered; flushed after every frame
-    frames_in = open(0, "rb", closefd=False)
+    frames_in = open(in_fd, "rb")
     sys.stdin = open(os.devnull, "r")           # nothing else may consume frames
     return frames_in, frames_out
 
@@ -782,6 +887,7 @@ def main(argv: list[str] | None = None) -> int:
         _log_internal(log, None, None, exc)
         return 1
     finally:
+        _stop_recognition()
         for handler in list(log.handlers):
             handler.close()
         try:

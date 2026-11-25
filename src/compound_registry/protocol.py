@@ -180,6 +180,42 @@ Operations
               ``invalid_argument`` when it has no reactant in that row. See
               "Synthesis routes".
 
+``recognition_status`` params: ``start`` (optional true/false, default
+              false).
+              result: ``{"installed", "state", "detail"?, "load_seconds"?}``
+              (see "Capture reaction"). With ``start`` true the host starts
+              the recognition worker when it is installed and answers at
+              once; the models load in the background. Never an error for
+              "not installed". No registry needed.
+
+``recognize`` params: ``image`` (required: base64 of a PNG, at most
+              :data:`MAX_IMAGE_BASE64_CHARS` characters), ``mode`` (required:
+              one of :data:`RECOGNITION_MODES`).
+              result: ``{"width", "height", "molecules", "reactions",
+              "unassigned", "seconds", "warnings"}`` (see "Capture
+              reaction"). ``recognition_not_installed``,
+              ``recognition_failed`` or ``image_invalid`` otherwise. The host
+              answers within :data:`RECOGNIZE_TIMEOUT_S` seconds. No registry
+              needed.
+
+``describe_structures`` params: ``structures`` (required: a list of 1 to
+              :data:`MAX_DESCRIBE_STRUCTURES` objects, each with exactly one
+              of ``molfile`` / ``smiles``).
+              result: ``{"structures": [{"smiles", "warnings"}, ...]}``, one
+              entry per structure sent, in the same order: the canonical
+              SMILES from the registry's RDKit (null when unreadable) and the
+              molecule warning codes that can be told from one structure
+              alone. A structure that cannot be read is never an error: its
+              entry is ``{"smiles": null, "warnings": ["unparsable"]}``. No
+              registry needed.
+
+``reaction_to_chemdraw`` params: ``steps`` (required: a list of 1 to
+              :data:`MAX_CHEMDRAW_STEPS` steps; see "Capture reaction").
+              result: ``{"path", "opened", "message"?}``: the ChemDraw file
+              (CDXML) written into the user's temporary folder, whether the
+              PC was asked to open it, and, when not, why. No registry
+              needed.
+
 Display-only additions (protocol version unchanged, purely additive)
 --------------------------------------------------------------------
 * ``folder`` in ``register``: ``{"path", "created"}``, the compound's folder
@@ -466,6 +502,140 @@ itself: the result's ``notes`` say in plain words how the search was read
 (for example "Read as SMILES" or "The drawn structure could not be read").
 An unreadable or empty query structure matches nothing.
 
+Capture reaction
+----------------
+The four operations of :data:`CAPTURE_OPS` read a drawn reaction scheme from
+a picture (a screenshot the user cut out in the extension's capture page) and
+hand the result to ChemDraw. Everything runs on this PC; nothing is sent
+anywhere. They need NO registry: the host serves them without opening one and
+never answers them with ``registry_missing``. The extension sends them only
+from its capture page.
+
+Recognition is an optional part, installed with ``compound-registry
+install-recognition`` into its own folder and Python environment. A worker
+process of the host loads the models once and stays alive. The result is a
+DRAFT the user must check: wrong answers often look valid.
+
+``recognition_status`` answers:
+
+``installed``     true when the recognition environment and the model files
+                  are in place.
+``state``         one of :data:`RECOGNITION_STATES`: ``not_installed``;
+                  ``stopped`` (installed, no worker running); ``loading``
+                  (worker started, models loading); ``ready``; ``failed``
+                  (the worker could not be started or died while loading).
+``detail``        optional plain text for the user: how to install it, or
+                  why it failed. Never contains anything read from a picture.
+``load_seconds``  optional number: how long loading took (``ready``) or has
+                  taken so far (``loading``).
+
+``recognize`` answers, for the picture as received:
+
+``width``, ``height``  its size in pixels (whole numbers).
+``molecules``     every molecule found, also those in no reaction:
+                  ``{"n", "box", "smiles", "molfile", "confidence",
+                  "warnings"}``. ``n`` numbers them 1, 2, 3, ... in list
+                  order. ``box`` is ``[x0, y0, x1, y1]`` in pixels of the
+                  picture (whole numbers, ``0 <= x0 < x1 <= width``,
+                  ``0 <= y0 < y1 <= height``). ``smiles`` is the canonical
+                  SMILES from the registry's RDKit, or null when the
+                  structure could not be read; a placeholder (R group) stays
+                  in it as ``*``. ``molfile`` is a V2000 molfile with 2D
+                  coordinates, or null: the structure of ``smiles`` (stereo
+                  included: wedges, and the chiral flag when there is one),
+                  with its atoms where the picture has them whenever the
+                  drawing could be used. ``confidence`` is the model's own
+                  value from 0 to 1, or null. ``warnings`` is a list of
+                  :data:`MOLECULE_WARNING_CODES`.
+``reactions``     the steps found, in reading order:
+                  ``{"reactants", "agents", "products", "conditions",
+                  "reaction_smiles"}``. The first three are lists of molecule
+                  numbers ``n``; ``agents`` are the molecules drawn over or
+                  under the arrow. A molecule may be in several steps (the
+                  product of one and the reactant of the next).
+                  ``conditions`` are the text blocks at the arrow:
+                  ``{"box", "lines"}`` (``lines`` = the text read, one item
+                  per line). ``reaction_smiles`` is
+                  ``reactants>agents>products`` from the molecules' SMILES
+                  (each part joined with "."; agents that could not be read
+                  are left out), or null when a reactant or product has no
+                  SMILES or the step has neither reactants nor products.
+                  Mode ``molecule`` always gives ``[]``.
+``unassigned``    the numbers of the molecules that are in no reaction.
+``seconds``       how long the recognition took (number).
+``warnings``      a list of :data:`RECOGNITION_WARNING_CODES`.
+
+At most :data:`MAX_RECOGNITION_MOLECULES` molecules are returned (the first
+ones found; the result's ``warnings`` then contain ``truncated``).
+
+Molecule warning codes (:data:`MOLECULE_WARNING_CODES`), computed by the host
+with the registry's RDKit:
+
+``unparsable``            the structure could not be read (``smiles`` null).
+``placeholder``           contains a dummy atom / R group.
+``isotope``               contains an isotope label (often a misread).
+``unusual_element``       contains an element that is rare in organic
+                          synthesis (often a misread).
+``stereo``                has a stereocentre (with or without a wedge) or a
+                          double bond that is or could be E/Z: the user
+                          should check the wedges and the geometry.
+``charged_or_salt``       has charges or several fragments: the user should
+                          check the counter-ion.
+``low_confidence``        the model's confidence is low. ``recognize`` only.
+``duplicate``             the same structure (the same ``smiles``) appears
+                          more than once in the picture. ``recognize`` only.
+``smiles_molfile_differ`` the model's two answers (SMILES and molfile)
+                          describe different structures. A molfile that only
+                          leaves a group as a placeholder which the SMILES
+                          has expanded (an abbreviation) does not count.
+                          ``recognize`` only.
+
+``describe_structures`` reports only the first six (what can be told from one
+structure alone).
+
+Result warning codes (:data:`RECOGNITION_WARNING_CODES`):
+
+``no_molecules``          no molecule was found in the picture.
+``no_reaction``           mode ``reaction``: molecules were found but no
+                          reaction.
+``unassigned_molecules``  mode ``reaction``: at least one reaction was found,
+                          and some molecules are in none (a step may have
+                          been missed).
+``truncated``             more than :data:`MAX_RECOGNITION_MOLECULES`
+                          molecules were found; the rest was left out.
+
+Errors of ``recognize``:
+
+``recognition_not_installed``  the optional part is not installed; the
+                               message names the command that installs it.
+``recognition_failed``         the worker could not be started, died, gave no
+                               answer in time or reported a model error. The
+                               message is plain text without anything read
+                               from the picture.
+``image_invalid``              ``image`` is not base64 of a PNG, or the
+                               picture is smaller than
+                               :data:`MIN_IMAGE_SIDE` or larger than
+                               :data:`MAX_IMAGE_SIDE` pixels on a side.
+
+A wrong type, a missing key or an ``image`` longer than
+:data:`MAX_IMAGE_BASE64_CHARS` is ``bad_request`` like everywhere else.
+
+``reaction_to_chemdraw`` draws ``steps`` as consecutive reaction steps. A
+step is an object with exactly these keys::
+
+    {"reactants":  [molfile, ...],   # required, 0..MAX_CHEMDRAW_STEP_MOLECULES
+     "products":   [molfile, ...],   # required, 0..MAX_CHEMDRAW_STEP_MOLECULES
+     "agents":     [molfile, ...],   # optional (default []): drawn over the arrow
+     "conditions": [text, ...]}      # optional (default []): lines written at the arrow
+
+A step needs at least one reactant or product. A molfile is non-blank text of
+at most :data:`MAX_STRUCTURE_CHARS` characters. A condition line is one line
+of at most :data:`MAX_REACTION_TEXT` characters without control characters;
+it is trimmed and blank lines are dropped; at most
+:data:`MAX_CHEMDRAW_CONDITION_LINES` lines per step. The result's ``path`` is
+the file written, ``opened`` is true when the PC was asked to open it, and
+``message`` (optional) says in plain words why it was not opened.
+
 Which registry
 --------------
 The host NEVER creates a registry: a new, empty one would issue IDs that
@@ -502,6 +672,11 @@ __all__ = [
     "MAX_REACTION_ROWS", "MAX_REACTION_TEXT", "MAX_REACTION_NUMBER", "AMOUNTS_SHOWN",
     "REACTION_KEYS", "COMPONENT_KEYS", "AMOUNT_KEYS", "SOLVENT_KEYS", "MAX_ROUTE_CDXML_CHARS",
     "LIMITING_BY",
+    "CAPTURE_OPS", "MAX_IMAGE_BASE64_CHARS", "MIN_IMAGE_SIDE", "MAX_IMAGE_SIDE",
+    "RECOGNITION_MODES", "RECOGNITION_STATES", "RECOGNIZE_TIMEOUT_S",
+    "MAX_RECOGNITION_MOLECULES", "MOLECULE_WARNING_CODES", "STRUCTURE_WARNING_CODES",
+    "RECOGNITION_WARNING_CODES", "MAX_DESCRIBE_STRUCTURES", "MAX_CHEMDRAW_STEPS",
+    "MAX_CHEMDRAW_STEP_MOLECULES", "MAX_CHEMDRAW_CONDITION_LINES", "CHEMDRAW_STEP_KEYS",
     "CONFIRM_KEYS", "SOURCE", "ProtocolError", "Request", "parse_request", "ok_response", "error_response",
     "is_safe_url",
 ]
@@ -545,7 +720,50 @@ MAX_IGNORED_ITEM_TEXT = 1000
 
 OPS = ("ping", "analyze", "register", "retire", "find", "compounds", "set_name",
        "generate_name", "set_yield", "yields", "compound_files", "read_pdf",
-       "set_reaction", "route", "set_limiting")
+       "set_reaction", "route", "set_limiting",
+       "recognition_status", "recognize", "describe_structures", "reaction_to_chemdraw")
+
+#: The operations of "Capture reaction". The host serves them WITHOUT a
+#: registry (never ``registry_missing``); the extension sends them only from
+#: its capture page.
+CAPTURE_OPS = ("recognition_status", "recognize", "describe_structures", "reaction_to_chemdraw")
+
+#: ``recognize``: ``image`` is base64 of a PNG of at most this many characters
+#: (675 000 bytes), so that the whole request stays under MAX_REQUEST_BYTES.
+MAX_IMAGE_BASE64_CHARS = 900_000
+#: ``recognize``: a picture must be at least / at most this many pixels wide
+#: and high (``image_invalid`` otherwise).
+MIN_IMAGE_SIDE = 16
+MAX_IMAGE_SIDE = 8000
+#: ``mode`` of ``recognize``: a reaction scheme, or a picture of one molecule.
+RECOGNITION_MODES = ("reaction", "molecule")
+#: ``state`` of ``recognition_status``.
+RECOGNITION_STATES = ("not_installed", "stopped", "loading", "ready", "failed")
+#: The host answers ``recognize`` within this many seconds (waiting for the
+#: models to load included), with ``recognition_failed`` when the worker was
+#: not done by then; the extension must wait longer than this.
+RECOGNIZE_TIMEOUT_S = 270
+#: ``recognize`` returns at most this many molecules.
+MAX_RECOGNITION_MOLECULES = 60
+#: ``warnings`` of a molecule (see "Capture reaction").
+MOLECULE_WARNING_CODES = ("unparsable", "placeholder", "isotope", "unusual_element", "stereo",
+                          "charged_or_salt", "low_confidence", "duplicate",
+                          "smiles_molfile_differ")
+#: The molecule warnings ``describe_structures`` can report: those that can
+#: be told from one structure alone.
+STRUCTURE_WARNING_CODES = ("unparsable", "placeholder", "isotope", "unusual_element", "stereo",
+                           "charged_or_salt")
+#: ``warnings`` of a ``recognize`` result.
+RECOGNITION_WARNING_CODES = ("no_molecules", "no_reaction", "unassigned_molecules", "truncated")
+
+#: ``describe_structures``: at most this many structures per request.
+MAX_DESCRIBE_STRUCTURES = 50
+
+#: ``reaction_to_chemdraw``: limits of ``steps`` (see "Capture reaction").
+MAX_CHEMDRAW_STEPS = 12
+MAX_CHEMDRAW_STEP_MOLECULES = 10     # per list: reactants, agents, products
+MAX_CHEMDRAW_CONDITION_LINES = 20    # per step
+CHEMDRAW_STEP_KEYS = ("reactants", "agents", "products", "conditions")
 
 #: ``set_reaction``: limits of the ``reaction`` object (see "Reactions").
 MAX_REACTION_ROWS = 50               # items per list (reactants, reagents, solvents)
@@ -619,6 +837,9 @@ HOST_ERROR_CODES = (
     "registry_missing",       # no registry at the configured place; the host never creates one
     "registry_changed",       # the configured registry changed since the host started; it then exits
     "internal_error",         # unexpected exception; details are in the host log only
+    "recognition_not_installed",  # recognize: the optional recognition part is not installed
+    "recognition_failed",     # recognize: the worker died, timed out or reported a model error
+    "image_invalid",          # recognize: not base64 of a PNG, or a picture of unusable size
 )
 
 #: Keys of ``confirm`` in ``register``; each is the same-named key of
@@ -1074,6 +1295,125 @@ def _params_retire(p: _Params) -> dict[str, Any]:
     }
 
 
+def _params_recognition_status(p: _Params) -> dict[str, Any]:
+    return {"start": p.flag("start", default=False)}
+
+
+def _params_recognize(p: _Params) -> dict[str, Any]:
+    # Not p.text(): the image is long, and what is in it (base64, PNG, size) is
+    # checked by the host when it decodes it (``image_invalid``). Its content
+    # never appears in a message.
+    p.seen.add("image")
+    image = p.raw.get("image")
+    if image is None:
+        raise p.fail("'image' is required.")
+    if not isinstance(image, str):
+        raise p.fail("'image' must be text (base64 of a PNG).")
+    if not image:
+        raise p.fail("'image' is empty.")
+    if len(image) > MAX_IMAGE_BASE64_CHARS:
+        raise p.fail(f"'image' is too long (limit {MAX_IMAGE_BASE64_CHARS} characters).")
+    mode = p.text("mode", required=True, max_len=MAX_ID_TEXT)
+    if mode not in RECOGNITION_MODES:
+        raise p.fail(f"'mode' must be one of {', '.join(RECOGNITION_MODES)}.")
+    return {"image": image, "mode": mode}
+
+
+def _params_describe_structures(p: _Params) -> dict[str, Any]:
+    p.seen.add("structures")
+    value = p.raw.get("structures")
+    if value is None:
+        raise p.fail("'structures' is required.")
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_DESCRIBE_STRUCTURES:
+        raise p.fail(f"'structures' must be a list of 1 to {MAX_DESCRIBE_STRUCTURES} structures.")
+    out: list[dict[str, str | None]] = []
+    for index, item in enumerate(value):
+        where = f"structures[{index}]"
+        if not isinstance(item, dict):
+            raise p.fail(f"'{where}' must be an object.")
+        unknown = sorted(str(k) for k in set(item) - {"molfile", "smiles"})
+        if unknown:
+            raise p.fail(f"'{where}' has unknown key(s): {', '.join(unknown)}.")
+        molfile, smiles = item.get("molfile"), item.get("smiles")
+        if (molfile is None) == (smiles is None):
+            raise p.fail(f"'{where}': give exactly one structure: 'molfile' or 'smiles'.")
+        key, text, multiline = (("molfile", molfile, True) if molfile is not None
+                                else ("smiles", smiles, False))
+        if not isinstance(text, str):
+            raise p.fail(f"'{where}.{key}' must be text.")
+        if len(text) > MAX_STRUCTURE_CHARS:
+            raise p.fail(f"'{where}.{key}' is too long (limit {MAX_STRUCTURE_CHARS} characters).")
+        if _has_control(text, allow_newlines=multiline):
+            raise p.fail(f"'{where}.{key}' contains control characters.")
+        if not text.strip():
+            raise p.fail(f"'{where}.{key}' is blank.")
+        out.append({"molfile": molfile, "smiles": smiles.strip() if smiles is not None else None})
+    return {"structures": out}
+
+
+def _chemdraw_step(p: _Params, value: object, where: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise p.fail(f"'{where}' must be an object.")
+    unknown = sorted(str(k) for k in set(value) - set(CHEMDRAW_STEP_KEYS))
+    if unknown:
+        raise p.fail(f"'{where}' has unknown key(s): {', '.join(unknown)}.")
+    out: dict[str, Any] = {}
+    for key in ("reactants", "agents", "products"):
+        items = value.get(key)
+        if items is None:
+            if key != "agents":
+                raise p.fail(f"'{where}.{key}' is required (a list of molfiles, possibly empty).")
+            items = []
+        if not isinstance(items, list):
+            raise p.fail(f"'{where}.{key}' must be a list of molfiles.")
+        if len(items) > MAX_CHEMDRAW_STEP_MOLECULES:
+            raise p.fail(f"'{where}.{key}' has more than {MAX_CHEMDRAW_STEP_MOLECULES} items.")
+        for index, molfile in enumerate(items):
+            spot = f"{where}.{key}[{index}]"
+            if not isinstance(molfile, str):
+                raise p.fail(f"'{spot}' must be text (a molfile).")
+            if len(molfile) > MAX_STRUCTURE_CHARS:
+                raise p.fail(f"'{spot}' is too long (limit {MAX_STRUCTURE_CHARS} characters).")
+            if _has_control(molfile, allow_newlines=True):
+                raise p.fail(f"'{spot}' contains control characters.")
+            if not molfile.strip():
+                raise p.fail(f"'{spot}' is blank.")
+        out[key] = list(items)
+    if not out["reactants"] and not out["products"]:
+        raise p.fail(f"'{where}' needs at least one reactant or product.")
+    lines = value.get("conditions")
+    if lines is None:
+        lines = []
+    if not isinstance(lines, list):
+        raise p.fail(f"'{where}.conditions' must be a list of text lines.")
+    if len(lines) > MAX_CHEMDRAW_CONDITION_LINES:
+        raise p.fail(f"'{where}.conditions' has more than {MAX_CHEMDRAW_CONDITION_LINES} lines.")
+    kept: list[str] = []
+    for index, line in enumerate(lines):
+        spot = f"{where}.conditions[{index}]"
+        if not isinstance(line, str):
+            raise p.fail(f"'{spot}' must be text.")
+        if len(line) > MAX_REACTION_TEXT:
+            raise p.fail(f"'{spot}' is too long (limit {MAX_REACTION_TEXT} characters).")
+        if _has_control(line, allow_newlines=False):
+            raise p.fail(f"'{spot}' contains control characters (one line of text each).")
+        if line.strip():
+            kept.append(line.strip())
+    out["conditions"] = kept
+    return {key: out[key] for key in CHEMDRAW_STEP_KEYS}
+
+
+def _params_reaction_to_chemdraw(p: _Params) -> dict[str, Any]:
+    p.seen.add("steps")
+    value = p.raw.get("steps")
+    if value is None:
+        raise p.fail("'steps' is required.")
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_CHEMDRAW_STEPS:
+        raise p.fail(f"'steps' must be a list of 1 to {MAX_CHEMDRAW_STEPS} steps.")
+    return {"steps": [_chemdraw_step(p, step, f"steps[{index}]")
+                      for index, step in enumerate(value)]}
+
+
 _PARAM_READERS = {
     "ping": _params_ping,
     "analyze": _params_analyze,
@@ -1090,6 +1430,10 @@ _PARAM_READERS = {
     "set_reaction": _params_set_reaction,
     "route": _params_route,
     "set_limiting": _params_set_limiting,
+    "recognition_status": _params_recognition_status,
+    "recognize": _params_recognize,
+    "describe_structures": _params_describe_structures,
+    "reaction_to_chemdraw": _params_reaction_to_chemdraw,
 }
 
 
