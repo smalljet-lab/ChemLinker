@@ -347,6 +347,32 @@ def test_wedge_hash_and_wavy_bonds():
     assert displays[3] == "Wavy" and displays[2] is None
 
 
+def test_a_route_draws_a_double_bond_marked_either_as_wavy_and_no_other():
+    """Changed on purpose in 0.12.0 (CHANGELOG, "ChemDraw routes"): a double
+    bond the molfile marks "E or Z unknown" (bond stereo 3, which RDKit
+    writes for an oxime read from a SMILES without / or \\) is drawn wavy in
+    a ROUTE too; without it ChemDraw would read a definite E or Z from the
+    coordinates. A double bond without the mark (geometry given by the
+    drawing, or written by a program that leaves the field 0) stays plain,
+    as in 0.11.0."""
+    def double_bond_display(molfile: str) -> str | None:
+        doc = render(Route(participant("cs:D", molfile, label="D1"), ()))
+        (frag,) = doc.page.iter("fragment")
+        (double,) = [b for b in frag.findall("b") if b.get("Order") == "2"]
+        return double.get("Display")
+
+    unknown = mol2d("CC(C)=NO")      # symmetric: no geometry at all ...
+    assert double_bond_display(unknown) is None
+    either = mol2d("CCC(C)=NO")      # ... this one has E or Z, and the SMILES says neither
+    (line,) = [l for l in either.split("\n") if l[6:9] == "  2"]
+    assert line[9:12] == "  3"
+    assert double_bond_display(either) == "Wavy"
+    assert double_bond_display(mol2d("CC/C(C)=N/O")) is None
+    plain = "\n".join(l[:9] + "  0" + l[12:] if l[6:9] == "  2" and len(l) >= 12 else l
+                      for l in either.split("\n"))
+    assert double_bond_display(plain) is None
+
+
 def test_three_d_and_flat_files_get_new_2d_coordinates():
     m = Chem.AddHs(Chem.MolFromSmiles("C[C@H](N)C(=O)O"))
     AllChem.EmbedMolecule(m, randomSeed=7)

@@ -69,7 +69,7 @@ _UPDATE_HINT = ("To update later: get the new version of the project folder, the
 #: The name and size of the optional recognition part. The installer asks
 #: before it downloads it, and never downloads it in a run that asks nothing
 #: (unless ``--recognition yes`` says so).
-RECOGNISER_NAME = "ChemRecogniser"
+RECOGNISER_NAME = "ChemResolver"
 RECOGNISER_SIZE = "about 2.8 GB"
 _RECOGNITION_HINT = (f"Optional: {RECOGNISER_NAME} ('Capture reaction': reading a drawn reaction "
                      f"scheme from the screen) is not installed. It needs {RECOGNISER_SIZE} "
@@ -182,7 +182,7 @@ class Environment:
     upgrade_registry: Callable[[str], dict[str, Any]] = _upgrade_registry
     create_registry: Callable[[str, "str | None"], list[str]] = _create_registry
     install: Callable[..., dict[str, Any]] = install_host.install
-    #: The optional ChemRecogniser: ``() -> {"installed", "home", "problem"}``
+    #: The optional ChemResolver: ``() -> {"installed", "home", "problem"}``
     #: and ``(say) -> result`` (downloads about 2.8 GB when it is not there).
     recognition_status: Callable[[], dict[str, Any]] = _recognition_status
     recognition_install: Callable[[Callable[[str], None]], dict[str, Any]] = _recognition_install
@@ -842,7 +842,7 @@ def _recognition_started(status: dict[str, Any]) -> bool:
 
 
 def _choose_recognition(options: Options, env: Environment, plan: _Plan) -> dict[str, Any]:
-    """Question 5: the optional ChemRecogniser ("Capture reaction"). It is a
+    """Question 5: the optional ChemResolver ("Capture reaction"). It is a
     large download, so a run that asks nothing never starts it by itself:
     ``--yes`` leaves it out, ``--upgrade`` only brings an existing one up to
     date."""
@@ -1146,7 +1146,7 @@ def run_setup(options: Options, env: Environment) -> int:
             done = "was brought up to date" if installed.get("replaced") else "was installed"
             say(f"The MestReNova add-on {done} in {installed.get('scripts_dir')}.")
 
-    # 5. The optional ChemRecogniser (a long download; it reports its own progress).
+    # 5. The optional ChemResolver (a long download; it reports its own progress).
     recognition_done = bool(recognition_now.get("installed"))
     if plan.recognition:
         say("")

@@ -1103,12 +1103,12 @@ def _print_recognition(state: dict[str, Any]) -> None:
     from . import recognition
 
     if state.get("installed"):
-        out(f"Recognition     installed in {state.get('home')}")
+        out(f"ChemResolver  installed in {state.get('home')}")
     elif state.get("problem") and state.get("home") and os.path.isdir(state["home"]):
-        out(f"Recognition     NOT complete in {state['home']}: {state['problem']}")
+        out(f"ChemResolver  NOT complete in {state['home']}: {state['problem']}")
         out(f"                (run '{recognition.INSTALL_COMMAND}' again)")
     else:
-        out("Recognition     not installed (optional: reads reaction schemes from pictures;")
+        out("ChemResolver  not installed (optional: reads reaction schemes from pictures;")
         out(f"                '{recognition.INSTALL_COMMAND}')")
 
 
@@ -1638,9 +1638,9 @@ def add_install_recognition_parser(sub, common) -> None:
                         help="machine output: exactly one JSON document on stdout (progress "
                              "goes to stderr)")
     p = sub.add_parser("install-recognition", parents=[parent],
-                       help="install the optional part that reads reaction schemes from "
+                       help="install ChemResolver, the optional part that reads reaction schemes from "
                             "pictures (about 2.8 GB)",
-                       description="Install the optional recognition part used by 'Capture "
+                       description="Install ChemResolver, the optional part used by 'Capture "
                                    "reaction' in the browser extension: a Python environment of "
                                    "its own with torch, RxnScribe, MolScribe and EasyOCR (about "
                                    "1.2 GB) and their model files (about 1.6 GB), for the "
@@ -1658,7 +1658,7 @@ def add_install_recognition_parser(sub, common) -> None:
                    help="copy the model files from DIR (already downloaded, same file names) "
                         "instead of downloading them; they are checked all the same")
     p.add_argument("--uninstall", action="store_true",
-                   help="remove the recognition part again. Only what this command made is "
+                   help="remove ChemResolver again. Only what this command made is "
                         "deleted: a folder named env or models that it did not create is "
                         "left alone")
     p.set_defaults(handler=cmd_install_recognition, _validate=_validate_install_recognition,
@@ -1702,7 +1702,7 @@ def add_setup_parser(sub, common) -> None:
     p.add_argument("--mnova", choices=("yes", "no"),
                    help="install / refresh the MestReNova add-on, or leave it alone")
     p.add_argument("--recognition", choices=("yes", "no"),
-                   help="install / refresh ChemRecogniser, the optional part that reads "
+                   help="install / refresh ChemResolver, the optional part that reads "
                         "reaction schemes from the screen (about 2.8 GB), or leave it alone. "
                         "Without this option the installer asks; --yes never installs it and "
                         "--upgrade only refreshes an existing one")

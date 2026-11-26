@@ -93,21 +93,21 @@ export function statusText(status: RecognitionStatusResult): StatusText {
       return {
         kind: "warn",
         text:
-          "The recognition part is not installed on this PC. It is optional and large (about 2.8 GB of download). " +
+          "ChemResolver is not installed on this PC. It is optional and large (about 2.8 GB of download). " +
           "To install it, open a terminal and run the command below, then press Check again.",
         command: INSTALL_COMMAND,
       };
     case "failed":
-      return { kind: "error", text: `The recognition program could not be started.${detail}` };
+      return { kind: "error", text: `ChemResolver could not be started.${detail}` };
     case "ready":
-      return { kind: "ok", text: "The recognition program is ready." };
+      return { kind: "ok", text: "ChemResolver is ready." };
     case "loading":
     case "stopped": {
       const seconds = status.load_seconds !== undefined ? ` (${Math.round(status.load_seconds)} s so far)` : "";
       return {
         kind: "info",
         text:
-          `The recognition program is loading its models${seconds}. This takes 20 to 40 seconds, the very first time a few minutes. ` +
+          `ChemResolver is loading its models${seconds}. This takes 20 to 40 seconds, the very first time a few minutes. ` +
           "You can already select the reaction.",
       };
     }
@@ -122,10 +122,10 @@ export function errorSentence(error: HostError, op?: CaptureOp): string {
     case "recognition_not_installed":
       // The program's own message says where and how to type the command on this PC.
       if (error.message.includes("install-recognition")) return error.message;
-      return `The recognition part is not installed on this PC. Open a terminal and run: ${INSTALL_COMMAND}`;
+      return `ChemResolver is not installed on this PC. Open a terminal and run: ${INSTALL_COMMAND}`;
     case "host_timeout":
       // Every operation can run out of time; only for a recognition is the selection the thing to change.
-      if (op === "recognize") return `${error.message} The recognition took too long. Try a smaller selection.`;
+      if (op === "recognize") return `${error.message} ChemResolver took too long. Try a smaller selection.`;
       return `${error.message} The program may be busy reading another picture. Try again in a moment.`;
     default:
       return error.message;

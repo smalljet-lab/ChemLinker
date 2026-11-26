@@ -494,7 +494,7 @@ def test_doctor_says_whether_recognition_is_installed(tmp_path, monkeypatch, cap
     monkeypatch.setenv(recognition.HOME_ENV_VAR, str(tmp_path / "recognition"))
     assert main(["--home", str(home), "doctor"]) == 0
     out = capsys.readouterr().out
-    assert "Recognition     not installed" in out and "install-recognition" in out
+    assert "ChemResolver  not installed" in out and "install-recognition" in out
     assert main(["--home", str(home), "--json", "doctor"]) == 0
     assert json.loads(capsys.readouterr().out)["recognition"] == {
         "installed": False, "home": str(tmp_path / "recognition"),
@@ -504,7 +504,7 @@ def test_doctor_says_whether_recognition_is_installed(tmp_path, monkeypatch, cap
     python.parent.mkdir(parents=True)
     python.write_bytes(b"")
     assert main(["--home", str(home), "doctor"]) == 0
-    assert "Recognition     NOT complete" in capsys.readouterr().out
+    assert "ChemResolver  NOT complete" in capsys.readouterr().out
     for path in recognition.model_files(tmp_path / "recognition"):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"m")
@@ -513,7 +513,7 @@ def test_doctor_says_whether_recognition_is_installed(tmp_path, monkeypatch, cap
     assert "NOT complete" in capsys.readouterr().out               # a record that says nothing
     recognition_install._write_marker(tmp_path / "recognition")
     assert main(["--home", str(home), "doctor"]) == 0
-    assert f"Recognition     installed in {tmp_path / 'recognition'}" in capsys.readouterr().out
+    assert f"ChemResolver  installed in {tmp_path / 'recognition'}" in capsys.readouterr().out
 
 
 def test_the_setup_closing_text_only_mentions_the_optional_part():

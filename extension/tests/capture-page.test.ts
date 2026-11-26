@@ -235,7 +235,7 @@ describe("capture page: opening", () => {
     expect(visible(ctx.root, ".stage")).toBe(true);
     expect(button(ctx.root, "Recognise").disabled).toBe(true);
     expect(ctx.root.querySelector(".selection-note")!.textContent).toContain("Nothing is selected yet");
-    expect(ctx.root.textContent).toContain("The recognition program is ready.");
+    expect(ctx.root.textContent).toContain("ChemResolver is ready.");
     expect(ctx.root.textContent).toContain("nothing is sent anywhere");
   });
 
@@ -463,10 +463,10 @@ describe("capture page: recognising", () => {
     button(ctx.root, "Whole picture").click();
     button(ctx.root, "Recognise").click();
     await settle();
-    ctx.client.last("recognize").resolve({ ok: false, error: { code: "recognition_failed", message: "The recognition program stopped unexpectedly." } });
+    ctx.client.last("recognize").resolve({ ok: false, error: { code: "recognition_failed", message: "ChemResolver stopped unexpectedly." } });
     await settle();
     expect(visible(ctx.root, ".stage")).toBe(true);
-    expect(ctx.root.textContent).toContain("The recognition program stopped unexpectedly.");
+    expect(ctx.root.textContent).toContain("ChemResolver stopped unexpectedly.");
     expect(ctx.client.callsOf("recognition_status")).toHaveLength(2);
     expect(ctx.root.querySelector<HTMLElement>(".sel-box")!.hidden).toBe(false); // the selection is kept
   });
@@ -965,7 +965,7 @@ describe("capture page: found in review", () => {
     expect(ctx.client.callsOf("recognition_status")).toHaveLength(1); // no second question on top
     ctx.client.last("recognition_status").resolve({ ok: true, result: READY });
     await settle();
-    expect(statusBox(ctx.root)).toContain("The recognition program is ready.");
+    expect(statusBox(ctx.root)).toContain("ChemResolver is ready.");
   });
 
   it("a recognition that worked replaces an earlier status error, and a status time-out does not talk about the selection", async () => {
@@ -980,15 +980,15 @@ describe("capture page: found in review", () => {
     await settle();
     expect(statusBox(ctx.root)).toContain("did not answer within 30 seconds");
     expect(statusBox(ctx.root)).not.toContain("smaller selection");
-    expect(statusBox(ctx.root)).not.toContain("recognition took too long");
+    expect(statusBox(ctx.root)).not.toContain("took too long");
     button(ctx.root, "Whole picture").click();
     button(ctx.root, "Recognise").click();
     await settle();
     ctx.client.last("recognize").resolve({ ok: true, result: recognizeResult() });
     await settle();
-    expect(statusBox(ctx.root)).toContain("The recognition program is ready.");
+    expect(statusBox(ctx.root)).toContain("ChemResolver is ready.");
     button(ctx.root, "New selection").click();
-    expect(statusBox(ctx.root)).toContain("The recognition program is ready.");
+    expect(statusBox(ctx.root)).toContain("ChemResolver is ready.");
     expect(statusBox(ctx.root)).not.toContain("Asking the program");
   });
 
@@ -1109,7 +1109,7 @@ describe("capture page: found in review", () => {
     expect(ctx.root.textContent).toContain("is kept, with your corrections");
     button(ctx.root, "Recognise").click();
     await settle();
-    ctx.client.last("recognize").resolve({ ok: false, error: { code: "recognition_failed", message: "The recognition program stopped unexpectedly." } });
+    ctx.client.last("recognize").resolve({ ok: false, error: { code: "recognition_failed", message: "ChemResolver stopped unexpectedly." } });
     await settle();
     expect(visible(ctx.root, ".stage")).toBe(true);
 

@@ -166,8 +166,12 @@ _BASE64 = re.compile(r"[A-Za-z0-9+/]*={0,2}\Z")
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _LOGGER = "compound_registry.host"
 
-NOT_INSTALLED = ("Reading reactions from pictures is an optional part of ChemLinker that is not "
-                 f"installed on this PC. To install it, run '{INSTALL_COMMAND}' (about 2.8 GB; "
+#: What the user calls the optional part (the installer asks for it by this
+#: name). Commands, files and operations keep "recognition".
+RECOGNISER_NAME = "ChemResolver"
+
+NOT_INSTALLED = (f"{RECOGNISER_NAME}, the optional part of ChemLinker that reads reactions from "
+                 f"pictures, is not installed on this PC. To install it, run '{INSTALL_COMMAND}' (about 2.8 GB; "
                  "it needs the internet once, afterwards everything runs on this PC).")
 
 
@@ -265,7 +269,7 @@ def install_state(home: Path | None = None) -> dict[str, Any]:
                 "problem": f"it could not be checked ({type(exc).__name__})"}
 
 
-OUTDATED = ("it was installed for another version of ChemLinker (the recognition programs "
+OUTDATED = ("it was installed for another version of ChemLinker (its programs "
             "or the models have changed since)")
 
 
@@ -1128,7 +1132,7 @@ class Recognition:
         if not installed["installed"]:
             detail = NOT_INSTALLED
             if installed["problem"] and Path(installed["home"] or "").exists():
-                detail = (f"The recognition part in {installed['home']} is not complete: "
+                detail = (f"{RECOGNISER_NAME} in {installed['home']} is not complete: "
                           f"{installed['problem']}. Run '{INSTALL_COMMAND}' again; it continues "
                           "where it stopped.")
             detail += how_to_run_the_installer()
@@ -1159,23 +1163,23 @@ class Recognition:
         name = f" ({exc.error})" if exc.error else ""
         again = f" If it happens again, run '{INSTALL_COMMAND}' once more to repair it."
         if exc.kind == "start":
-            return f"The recognition program could not be started{name}." + again
+            return f"{RECOGNISER_NAME} could not be started{name}." + again
         if exc.kind == "load":
             if exc.error == "LoadTimeout":
-                return ("The recognition models did not finish loading within "
+                return (f"The models of {RECOGNISER_NAME} did not finish loading within "
                         f"{self.load_timeout:.0f} seconds." + again)
-            return f"The recognition models could not be loaded{name}." + again
+            return f"The models of {RECOGNISER_NAME} could not be loaded{name}." + again
         if exc.kind == "loading":
-            return ("The recognition models are still loading (the first run after the "
+            return (f"{RECOGNISER_NAME} is still loading its models (the first run after the "
                     "installation can take a few minutes). Try again in a moment.")
         if exc.kind == "timeout":
-            return ("The recognition gave no answer in time and was stopped. Try a smaller "
+            return (f"{RECOGNISER_NAME} gave no answer in time and was stopped. Try a smaller "
                     "selection.")
         if exc.kind == "died":
-            return ("The recognition program ended unexpectedly, twice (the PC may be short of "
+            return (f"{RECOGNISER_NAME} ended unexpectedly, twice (the PC may be short of "
                     "memory: it needs about 2.5 GB). Try again, or try a smaller selection.")
         stage = _STAGES.get(exc.stage or "", "reading the picture")
-        return f"The recognition failed while {stage}{name}. Try another selection."
+        return f"{RECOGNISER_NAME} failed while {stage}{name}. Try another selection."
 
     def recognize(self, image: str, mode: str,
                   timeout: float = float(protocol.RECOGNIZE_TIMEOUT_S)) -> dict[str, Any]:

@@ -258,6 +258,75 @@ describe("the places of the atoms on a card", () => {
   });
 });
 
+describe("an R group on a card", () => {
+  it("is drawn 'R1', without a superscript number in front (the host writes R# with M  RGP)", () => {
+    const source = molfile(
+      [
+        ["R#", 0, 0],
+        ["C", 1.5, 0],
+        ["O", 2.25, 1.299],
+      ],
+      [
+        [1, 2, 1],
+        [2, 3, 1],
+      ],
+    ).replace("M  END", "M  RGP  1   1   1\nM  END");
+    const texts = draw(source).texts.map((t) => t.text);
+    expect(texts).toContain("R1");
+    expect(texts).not.toContain("1");
+  });
+});
+
+describe("the hydrogens of a label on a card", () => {
+  // Sitagliptin's corner: the stereocentre (atom 1) with its NH2 (atom 2) below it, the bond
+  // leaning 20 degrees to the right, and a fluorine (atom 6) to the left of the N at its height.
+  const corner = (withFluorine: boolean, stereo = 6): string =>
+    molfile(
+      [
+        ["C", 0, 0],
+        ["N", -0.513, -1.41],
+        ["C", 1.299, 0.75],
+        ["C", -1.299, 0.75],
+        ["C", -2.598, 0],
+        ...(withFluorine ? ([["F", -2.0, -1.35]] as Atom[]) : []),
+      ],
+      [[1, 2, 1, stereo], [1, 3, 1], [1, 4, 1], [4, 5, 1], ...(withFluorine ? ([[5, 6, 1]] as Bond[]) : [])],
+      1,
+    );
+  const sides = (drawing: Drawing): { n: number; h: number; f: number | undefined } => ({
+    n: drawing.texts.find((t) => t.text === "N")!.x,
+    h: drawing.texts.find((t) => t.text === "H")!.x,
+    f: drawing.texts.find((t) => t.text === "F")?.x,
+  });
+
+  it("writes NH2, not H2N, when the left side of the N is taken (the card read 'FH2N')", () => {
+    const drawing = draw(corner(true));
+    const { n, h, f } = sides(drawing);
+    expect(h).toBeGreaterThan(n); // H right of the N ...
+    expect(f!).toBeLessThan(n - 10); // ... and the F alone on the left
+    // The bond was turned upright about the stereocentre; the hash is still on it.
+    expect(Math.abs(drawing.atoms.get(1)!.x - drawing.atoms.get(0)!.x)).toBeLessThan(0.5);
+    expect(drawing.lines).toBeGreaterThan(draw(corner(true, 0)).lines + 3);
+  });
+
+  it("leaves OpenChemLib's own choice alone when nothing is in the way", () => {
+    const drawing = draw(corner(false));
+    const { n, h } = sides(drawing);
+    expect(h).toBeLessThan(n); // H2N: the bond leans right, the left is free
+    expect(Math.abs(drawing.atoms.get(1)!.x - drawing.atoms.get(0)!.x)).toBeGreaterThan(3);
+  });
+
+  it("keeps what the wedge says: the molfile read after the turn is the same enantiomer", () => {
+    const before = Molecule.fromMolfile(corner(true));
+    expect(before.getStereoCenterCount()).toBe(1);
+    // The card turns the N by 20 degrees only; no other bond of the centre lies in between, so the
+    // picture of the hash means the same. (OpenChemLib's code does not depend on the coordinates
+    // once read; this pins the case the renderer must not get wrong.)
+    const turned = corner(true).replace("   -0.5130   -1.4100", "    0.0000   -1.5000");
+    expect(Molecule.fromMolfile(turned).getIDCode()).toBe(before.getIDCode());
+  });
+});
+
 describe("the line with the SMILES on a card (capture.css)", () => {
   const css = readFileSync(join(root, "static", "capture.css"), "utf8");
   /** The declarations of the rule with exactly this selector. */
@@ -278,7 +347,16 @@ describe("the line with the SMILES on a card (capture.css)", () => {
     expect(smiles).toContain("flex: 1 1 0");
     expect(smiles).toContain("overflow-x: hidden");
     expect(smiles).toContain("overflow-y: auto"); // a very long one scrolls inside its box
-    expect(smiles).toMatch(/max-height: [\d.]+em/);
+    // The box is whole lines high (plus 2 x 2px padding and 2 x 1px border): the last line shown
+    // is never cut through the middle (a 326-character SMILES showed 5.5 lines), and it has room
+    // for 16 lines before it scrolls.
+    const lineHeight = Number(/line-height: (\d+)px/.exec(smiles)![1]);
+    const box = /max-height: calc\((\d+) \* (\d+)px \+ (\d+)px\)/.exec(smiles)!;
+    expect(Number(box[2])).toBe(lineHeight);
+    expect(Number(box[3])).toBe(2 * 2 + 2 * 1);
+    expect(smiles).toContain("padding: 2px 5px");
+    expect(smiles).toContain("border: 1px solid");
+    expect(Number(box[1])).toBeGreaterThanOrEqual(16);
     expect(smiles).not.toMatch(/white-space: nowrap|text-overflow/);
     expect(smiles).toContain("user-select: text");
   });

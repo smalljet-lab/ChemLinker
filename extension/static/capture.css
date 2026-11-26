@@ -140,13 +140,15 @@ ul.cards { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wr
 .structure { display: block; width: 100%; height: 170px; object-fit: scale-down; margin: 4px 0; background: #ffffff; }
 .structure.none { display: flex; align-items: center; justify-content: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 4px; font-size: 12px; }
 /* The SMILES is never cut: it breaks anywhere inside its own box, which takes the room the Copy
-   button leaves, and a very long one scrolls inside that box. */
+   button leaves. The box grows to 16 lines (a SMILES of about 700 characters); only a longer one
+   scrolls inside it. The height is whole lines plus padding and border (2 x 2px + 2 x 1px), so
+   the last line shown is never cut through the middle. */
 .smiles-row { display: flex; align-items: flex-start; gap: 6px; }
 .smiles-row > .btn { flex: none; }
 .smiles {
-  display: block; flex: 1 1 0; min-width: 0; max-height: 7.5em; overflow-x: hidden; overflow-y: auto;
+  display: block; flex: 1 1 0; min-width: 0; max-height: calc(16 * 18px + 6px); overflow-x: hidden; overflow-y: auto;
   padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: #f6f8fa;
-  font-size: 12px; line-height: 1.5; white-space: pre-wrap; user-select: text; -webkit-user-select: text;
+  font-size: 12px; line-height: 18px; white-space: pre-wrap; user-select: text; -webkit-user-select: text;
 }
 .smiles-row > .small { flex: 1 1 0; }
 .rxn-line > .btn { flex: none; }

@@ -75,6 +75,65 @@ function asDrawn(molecule: Molecule): void {
   for (const bond of bonds) molecule.setBondESR(bond, Molecule.cESRTypeAbs, -1);
 }
 
+/** A bond at most this far from vertical (degrees) may be turned upright by `hydrogensToTheRight`. */
+const UPRIGHT_LIMIT = 35;
+
+/**
+ * OpenChemLib writes the hydrogens of a label ("NH2", "OH") on the LEFT as
+ * soon as the atom's only bond leans to the right at all ("H2N"), where
+ * ChemDraw keeps them on the right for a bond that is nearly vertical. When
+ * that left side is taken by another atom (the ortho F next to the NH2 of
+ * sitagliptin: the card read "FH2N"), the end atom is turned about its
+ * neighbour until the bond is vertical, so the hydrogens go to the right as
+ * in the picture. Only for a bond within `UPRIGHT_LIMIT` degrees of vertical
+ * and only when no other bond of the neighbour lies in the way, so the
+ * wedges keep their meaning. For the card's drawing only.
+ */
+function hydrogensToTheRight(molecule: Molecule): void {
+  molecule.ensureHelperArrays(Molecule.cHelperNeighbours);
+  const bond = molecule.getAverageBondLength(true);
+  if (!(bond > 0)) return;
+  const all = molecule.getAllAtoms();
+  for (let atom = 0; atom < all; atom += 1) {
+    if (molecule.getAtomicNo(atom) === 6 || molecule.getConnAtoms(atom) !== 1 || molecule.getAllHydrogens(atom) === 0) continue;
+    const next = molecule.getConnAtom(atom, 0);
+    const x = molecule.getAtomX(atom);
+    const y = molecule.getAtomY(atom);
+    const dx = molecule.getAtomX(next) - x;
+    const dy = molecule.getAtomY(next) - y;
+    const length = Math.hypot(dx, dy);
+    if (!(dx > 1e-6) || !(length > 0) || (Math.atan2(dx, Math.abs(dy)) * 180) / Math.PI > UPRIGHT_LIMIT) continue;
+    const crowded = (from: number, to: number, besideY: number): boolean => {
+      for (let other = 0; other < all; other += 1) {
+        if (other === atom || other === next) continue;
+        const ox = molecule.getAtomX(other);
+        const oy = molecule.getAtomY(other);
+        if (ox > from && ox < to && Math.abs(oy - besideY) < 0.5 * bond) return true;
+      }
+      return false;
+    };
+    if (!crowded(x - 1.3 * bond, x, y)) continue;
+    const newX = molecule.getAtomX(next);
+    const newY = molecule.getAtomY(next) + (dy > 0 ? -length : length);
+    if (crowded(newX, newX + 1.3 * bond, newY)) continue;
+    // The turn must not sweep over another bond of the neighbour.
+    const from = Math.atan2(y - molecule.getAtomY(next), x - newX);
+    const to = Math.atan2(newY - molecule.getAtomY(next), 0);
+    let blocked = false;
+    for (let k = 0; k < molecule.getAllConnAtoms(next); k += 1) {
+      const other = molecule.getConnAtom(next, k);
+      if (other === atom) continue;
+      const angle = Math.atan2(molecule.getAtomY(other) - molecule.getAtomY(next), molecule.getAtomX(other) - newX);
+      const sweep = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+      const part = Math.atan2(Math.sin(angle - from), Math.cos(angle - from));
+      if (Math.sign(part) === Math.sign(sweep) && Math.abs(part) <= Math.abs(sweep)) blocked = true;
+    }
+    if (blocked) continue;
+    molecule.setAtomX(atom, newX);
+    molecule.setAtomY(atom, newY);
+  }
+}
+
 /**
  * The structure of a molfile as SVG text, for the capture page's cards.
  *
@@ -90,6 +149,7 @@ export const renderMolfileSvg: StructureRenderer = (molfile, width, height) => {
     const molecule = Molecule.fromMolfile(molfile);
     if (molecule.getAllAtoms() === 0) return null;
     asDrawn(molecule);
+    hydrogensToTheRight(molecule);
     svgCount += 1;
     // Only the drawing: no "abs" / "&1" / "or1" group labels and no R/S, E/Z letters; the wedges
     // say what was read. A stereocentre without a wedge is drawn plainly, not marked as an error:

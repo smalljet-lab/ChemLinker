@@ -734,3 +734,244 @@ def test_the_chemdraw_document_keeps_the_shape_and_the_wedges():
     for i in range(9):
         assert got[i][0] - cg[0] == pytest.approx((ref[i][0] - cr[0]) * scale, abs=0.3)
         assert got[i][1] - cg[1] == pytest.approx(-(ref[i][1] - cr[1]) * scale, abs=0.3)
+
+
+# --------------------------------------------------------------------------- found by checking real answers
+# The MolScribe molfiles below are its real answers for boxes of published
+# reaction schemes (tools/recognition-spike, RxnScribe boxes), with the box
+# and the rectangle the worker reports as seen.
+
+OL0604623_BOX6 = (
+    "*OC(=O)N(/N=C(\\C(=O)c1ccccc1)c1ccccc1)C(=O)O*", [4, 98, 234, 321], [1, 5, 235, 223], """
+     RDKit          2D
+
+  9  8  0  0  0  0  0  0  0  0999 V2000
+    1.3097   -6.1429    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    3.2743   -5.0317    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    3.2743   -2.9683    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    4.9114   -1.8571    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    6.7122   -2.9683    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    4.9114    0.2063    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    4.9114   -6.1429    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    6.7122   -5.0317    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    4.9114   -8.3651    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  2  0
+  2  7  1  0
+  3  4  1  0
+  4  5  1  0
+  4  6  1  0
+  7  8  1  0
+  7  9  2  0
+A    1
+Ph
+A    5
+CO2R
+A    6
+CO2R
+A    8
+Ph
+M  END
+""")
+
+OL0604623_BOX2 = (
+    "*OC(=O)[N-]N(C(=O)O*)P(c1ccccc1)(c1ccccc1)c1ccccc1", [435, 158, 695, 319], [-5, -5, 265, 165], """
+     RDKit          2D
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+   16.1491   -2.3333    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+   13.5857   -5.3492    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    8.2027   -5.3492    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000   -9.0000    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000   -1.3810    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  4  1  0
+  3  5  1  0
+M  CHG  1   2  -1
+A    1
+CO2R
+A    4
+RO2C
+A    5
+Ph3P
+M  END
+""")
+
+OL500618W_BOX2 = (
+    "CC(C)(O)S#N", [413, 49, 571, 163], [3, 3, 156, 112], """
+     RDKit          2D
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+    0.4400   -8.3651    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    4.8399   -5.8254    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    9.8997   -4.5556    0.0000 R   0  0  0  0  0  0  0  0  0  0  0  0
+    4.8399   -0.7460    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    9.2398   -8.3651    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  2  4  1  0
+  2  5  1  0
+A    3
+SN
+M  END
+""")
+
+
+def drawn_from(case):
+    smiles, box, seen, molfile = case
+    mol = recognition._mol_from_smiles(smiles)
+    return mol, read_molfile(molfile), box, seen
+
+
+def test_an_expanded_group_that_lands_across_the_drawing_is_turned_away():
+    """Two "Ph" and two "CO2R" labels round an N-N=C(C=O): RDKit, placing the
+    drawn-out phenyl and ester groups, put one across the other (two bonds
+    crossing, atoms 0.19 bond apart). The group is turned about the atom it
+    hangs on; the drawing of the picture is kept."""
+    mol, drawn, box, seen = drawn_from(OL0604623_BOX6)
+    block = depiction._from_the_picture(mol, drawn, box, seen)
+    assert block is not None                      # the picture's places, not a computed layout
+    out = Chem.MolFromMolBlock(block)
+    assert read_back(block) == recognition._smiles_of(mol)
+    assert depiction.clash_score(out, places(block)) == 0
+    assert depiction._crossings(out, places(block)) == 0
+
+
+def test_when_no_turn_helps_the_computed_layout_faces_the_way_of_the_picture():
+    """Five places for a molecule of 30 atoms (three labels, one of them
+    "Ph3P"): no placement of the groups is free of crossings, so the
+    molecule gets a computed layout, turned so that what the picture has on
+    the right (the N-) is on the right."""
+    mol, drawn, box, seen = drawn_from(OL0604623_BOX2)
+    block = depiction.drawing_molfile(mol, drawn, box, seen)
+    out = Chem.MolFromMolBlock(block)
+    assert read_back(block) == recognition._smiles_of(mol)
+    assert depiction.clash_score(out, places(block)) == 0
+    p = places(block)
+    anion = next(a.GetIdx() for a in out.GetAtoms() if a.GetFormalCharge() == -1)
+    other = next(n.GetIdx() for n in out.GetAtomWithIdx(anion).GetNeighbors() if n.GetSymbol() == "N")
+    assert p[anion][0] > p[other][0] + 0.5 * depiction.BOND
+    assert abs(p[anion][1] - p[other][1]) < abs(p[anion][0] - p[other][0])
+
+
+def test_an_expanded_group_does_not_turn_the_drawing():
+    """Acetone cyanohydrin with OH straight up and a "CN" label (read as
+    S#N): the drawn-out group used to pull the whole drawing 16 degrees
+    round. Only the atoms the picture has decide how the drawing is turned."""
+    mol, drawn, box, seen = drawn_from(OL500618W_BOX2)
+    block = depiction.drawing_molfile(mol, drawn, box, seen)
+    out = Chem.MolFromMolBlock(block)
+    p = places(block)
+    oxygen = next(a for a in out.GetAtoms() if a.GetSymbol() == "O")
+    centre = oxygen.GetNeighbors()[0].GetIdx()
+    angle = math.degrees(math.atan2(p[oxygen.GetIdx()][1] - p[centre][1],
+                                    p[oxygen.GetIdx()][0] - p[centre][0]))
+    assert abs(angle - 90.0) <= MAX_TURN
+
+
+def test_tidy_keeps_a_long_bond_the_picture_draws_between_groups_that_would_meet():
+    """Drawn like the user's first capture (pixels of a ChemDraw-style
+    picture, 45 px bonds): the bond from the ring to the CH(NH2) is drawn
+    long (1.5 bonds) and the biaryl bond a little long, so a methyl of the
+    tert-butyl clears the lower ring by half a bond. With every bond of one
+    length that methyl would land on the ring; the picture's long bonds are
+    kept instead and no bond is drawn shorter."""
+    smiles = "CC(C)(C)C(N)c1ccccc1-c1ccccc1"
+    pixels = {0: (205, 240), 1: (243, 218), 2: (282, 240), 3: (243, 265), 4: (243, 177),
+              5: (290, 155), 6: (183, 142), 7: (183, 97), 8: (145, 75), 9: (105, 97),
+              10: (105, 142), 11: (145, 163), 12: (145, 218), 13: (183, 240), 14: (183, 285),
+              15: (145, 307), 16: (105, 285), 17: (105, 240)}
+    mol = Chem.MolFromSmiles(smiles)
+    scale = depiction.BOND / 45.0
+    start = {i: (x * scale, -y * scale) for i, (x, y) in pixels.items()}
+    neat = depiction.tidy(mol, start)
+    assert neat is not start
+    lengths = {frozenset((b.GetBeginAtomIdx(), b.GetEndAtomIdx())):
+               math.dist(neat[b.GetBeginAtomIdx()], neat[b.GetEndAtomIdx()]) for b in mol.GetBonds()}
+    assert lengths[frozenset((4, 6))] > 1.25 * depiction.BOND
+    ends = [b for b in mol.GetBonds() if b.GetBeginAtom().GetDegree() == 1 or b.GetEndAtom().GetDegree() == 1]
+    assert all(lengths[frozenset((b.GetBeginAtomIdx(), b.GetEndAtomIdx()))] > 0.95 * depiction.BOND
+               for b in ends)
+    ring = [b for b in mol.GetBonds() if b.IsInRing()]
+    assert all(lengths[frozenset((b.GetBeginAtomIdx(), b.GetEndAtomIdx()))] ==
+               pytest.approx(depiction.BOND, abs=0.03) for b in ring)
+    assert math.dist(neat[0], neat[13]) > 0.4 * depiction.BOND     # the gap of the picture
+
+
+@pytest.mark.parametrize("drawn_as", ["O=Cc1ccc(-c2nnn[nH]2)cc1", "O=Cc1ccc(-c2[nH]nnn2)cc1"])
+@pytest.mark.parametrize("mirrored", [False, True])
+def test_the_nh_of_a_ring_stays_on_the_atom_the_picture_draws_it_on(drawn_as, mirrored):
+    """Losartan's tetrazole: the two N next to the carbon look alike to the
+    matching, but only one carries the H. The card puts it where the picture
+    has it, whichever way round the drawing numbers its atoms. (The SMILES
+    has an alcohol where the drawing has an aldehyde, so only the pattern of
+    elements and connections matches, as with the real losartan answer.)"""
+    smiles = "OCc1ccc(-c2nnn[nH]2)cc1"
+    picture = layout(drawn_as, 90.0)
+    if mirrored:
+        conformer = picture.GetConformer()
+        for i in range(picture.GetNumAtoms()):
+            q = conformer.GetAtomPosition(i)
+            conformer.SetAtomPosition(i, (-q.x, q.y, 0.0))
+    nh = next(a.GetIdx() for a in picture.GetAtoms() if a.GetSymbol() == "N" and a.GetTotalNumHs())
+    block = draw(smiles, as_molscribe(picture))
+    out = Chem.MolFromMolBlock(block)
+    got = places(block)
+    drawn = places(as_molscribe(picture))
+    # The drawn NH and the card's NH are the same atom of the picture: the one
+    # nearest to it once both are laid on each other (centre and scale).
+    match = out.GetSubstructMatch(Chem.MolFromSmarts("O~C~c1ccc(-c2nnnn2)cc1"))
+    card_nh = next(a.GetIdx() for a in out.GetAtoms() if a.GetSymbol() == "N" and a.GetTotalNumHs())
+
+    def normal(points, keys):
+        cx = sum(points[k][0] for k in keys) / len(keys)
+        cy = sum(points[k][1] for k in keys) / len(keys)
+        span = max(math.dist(points[a], points[b]) for a in keys for b in keys)
+        return {k: ((points[k][0] - cx) / span, (points[k][1] - cy) / span) for k in keys}
+
+    a = normal(drawn, list(range(picture.GetNumAtoms())))
+    b = normal(got, list(match))
+    nearest = min(range(picture.GetNumAtoms()), key=lambda i: math.dist(a[i], b[card_nh]))
+    assert nearest == nh
+
+
+def test_a_numbered_r_group_is_written_as_an_r_group_not_as_an_isotope():
+    """[1*] is MolScribe's R1. Written as an isotope the card showed a stray
+    superscript ("1R1"); as an R group (R# with M  RGP) it reads "R1" in
+    OpenChemLib and still reads back as [1*]."""
+    smiles = "[1*]c1ccc([2*])cc1"
+    picture = layout("*c1ccc(*)cc1")
+    for index, label in {0: "R1", 5: "R2"}.items():
+        picture.GetAtomWithIdx(index).SetProp("molFileAlias", label)
+    block = draw(smiles, as_molscribe(picture))
+    lines = block.split("\n")
+    assert not any(line.startswith("M  ISO") for line in lines)
+    assert any(line.startswith("M  RGP") for line in lines)
+    assert sum(" R# " in line for line in lines) == 2
+    assert read_back(block) == canonical(smiles)
+    # An isotope that is no R-group number stays an isotope.
+    assert "M  ISO" in draw("[13CH3]c1ccccc1", None)
+    # A placeholder with its own label ("Ar") keeps its label.
+    assert not depiction._is_numbered_r_group(_atom_with("[1*]C", "Ar"))
+    assert depiction._is_numbered_r_group(_atom_with("[1*]C", "R1"))
+    assert depiction._is_numbered_r_group(_atom_with("[3*]C", None))
+    assert not depiction._is_numbered_r_group(_atom_with("*C", None))
+
+
+def _atom_with(smiles: str, label: str | None):
+    mol = Chem.MolFromSmiles(smiles)
+    atom = mol.GetAtomWithIdx(0)
+    if label is not None:
+        atom.SetProp("molFileAlias", label)
+    return atom
+
+
+def test_a_computed_layout_that_does_not_read_back_is_not_returned():
+    """V2000 has room for an isotope of three digits: "[1710CH3]" (a
+    misreading) would come back as [171CH3]. A drawing that says something
+    else than the SMILES next to it is not returned; the card shows the
+    SMILES without a drawing."""
+    mol = Chem.MolFromSmiles("*.[1710CH3]")
+    assert depiction.drawing_molfile(mol) is None
+    assert depiction.drawing_molfile(Chem.MolFromSmiles("[171CH3]")) is not None

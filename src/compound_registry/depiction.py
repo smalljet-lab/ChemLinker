@@ -21,14 +21,27 @@ rules:
     nearest 30 degrees) and turns the drawing by a few degrees at most
     (:data:`MAX_STRAIGHTEN`) so that its bonds lie on the usual directions. An atom never leaves its place by
     more than :data:`MAX_TIDY_MOVE` bond lengths; otherwise the untidied
-    places are used.
+    places are used. Where two groups would land on each other once every
+    bond has one length, the chain bonds between them keep the greater
+    length the picture gives them (the chemist drew them long for that).
   - *Groups the SMILES has expanded.* An abbreviation ("Boc") is one
     placeholder atom in MolScribe's drawing and several atoms in its SMILES.
-    Its first atom takes the place of the label, RDKit lays out the rest.
+    Its first atom takes the place of the label, RDKit lays out the rest; a
+    group that lands across the drawing is turned or mirrored about the atom
+    it hangs on (:func:`_untangled`). Only the atoms the picture has decide
+    how the drawing is turned.
+  - *Which atom is which.* Where the drawing fits the structure in several
+    ways (the two N next to the carbon of a tetrazole), the way that gives
+    the labelled groups their size and the atoms their hydrogens wins.
 
   Only when the drawing cannot be matched to the structure, or its places are
-  unusable (atoms on top of each other), the molecule gets a computed layout:
-  RDKit's own or CoordGen's, whichever has fewer clashes (:func:`fresh_layout`).
+  unusable (atoms on top of each other, an expanded group that cannot be
+  placed without crossing the rest), the molecule gets a computed layout:
+  RDKit's own or CoordGen's, whichever has fewer clashes (:func:`fresh_layout`),
+  turned (or mirrored) to face the way the picture does.
+
+* **R groups.** A numbered placeholder ("[1*]", MolScribe's R1) is written
+  as an R group ("R#" with "M  RGP"), not as an isotope.
 
 * **Wedges that agree with the SMILES.** The wedges are never copied blindly.
   The picture's own wedges are kept when, on the final coordinates, they give
@@ -43,7 +56,9 @@ rules:
   and the editor) reads every stereocentre as a racemic "&1" group.
 
 No picture data is logged here, and nothing raises: any trouble ends in the
-computed layout, and ``None`` only when even that cannot be written.
+computed layout, and ``None`` only when even that cannot be written as a
+molfile that reads back as the structure (the card then shows the SMILES
+without a drawing).
 """
 
 from __future__ import annotations
@@ -72,6 +87,9 @@ _GRID_AGREEMENT = 0.6
 _FRAGMENT_GAP = 1.2
 #: Atom matchings of the drawing onto the structure that are tried.
 _MAX_MATCHES = 24
+#: For this many matchings an expanded group that lands across the drawing is
+#: turned about its atom (:func:`_untangled`) before the matching is given up.
+_UNTANGLE_TRIES = 3
 _TIDY_ROUNDS = 1000
 #: Atoms that are not bonded and nearer than this (bond lengths) after
 #: :func:`tidy` make it draw the bond to an end atom among them shorter ...
@@ -315,19 +333,27 @@ def _free_angles(gaps: list[float], rest: float, whole: bool) -> list[float]:
     return [g * rest / sum(gaps) for g in gaps]
 
 
-def tidy(mol: Any, places: Places) -> Places:
+def tidy(mol: Any, places: Places, anchors: Iterable[int] | None = None) -> Places:
     """``places`` (every atom of ``mol``, median bond :data:`BOND`) evened
     out: bonds of one length, regular rings, angles on the nearest 30
     degrees, the whole turned by a few degrees at most onto the usual bond
     directions. Where two groups would then land on each other (a tert-butyl
-    next to a ring: they nearly touch in the picture too) the bond to the end
-    atom is drawn shorter, as a chemist does. The drawing keeps its shape:
-    the result is returned only when no atom moved further than
-    :data:`MAX_TIDY_MOVE` bond lengths, no bonds cross that did not before
-    and no atom landed on another; otherwise ``places`` comes back
-    unchanged."""
+    next to a ring: they nearly touch in the picture too), the chain bonds
+    between them keep the greater length the picture gives them; only when
+    that is not enough is the bond to the end atom drawn shorter, as a
+    chemist does. The drawing keeps its shape: the result is returned only
+    when no atom moved further than :data:`MAX_TIDY_MOVE` bond lengths, no
+    bonds cross that did not before and no atom landed on another; otherwise
+    ``places`` comes back unchanged.
+
+    ``anchors``: the atoms whose places come from the picture (default: all).
+    The others (an expanded abbreviation) were placed by RDKit; they follow,
+    but they neither turn the drawing nor count for the distance moved."""
     if len(places) != mol.GetNumAtoms() or mol.GetNumBonds() == 0:
         return places
+    keys = [i for i in (places if anchors is None else anchors) if i in places]
+    if len(keys) < 2:
+        keys = list(places)
     try:
         rings = [frozenset(ring) for ring in mol.GetRingInfo().AtomRings()]
     except Exception:  # noqa: BLE001
@@ -347,7 +373,9 @@ def tidy(mol: Any, places: Places) -> Places:
                 and frozenset((i, j)) not in near]
 
     result = places
-    for attempt in range(3):
+    lengthened = False
+    shortened = 0
+    for _attempt in range(4):
         springs = [(a, b, length[frozenset((a, b))], 1.0) for a, b in bonds]
         for centre, a, b, degrees in angles:
             # An angle is held by the distance between its two outer atoms.
@@ -356,17 +384,24 @@ def tidy(mol: Any, places: Places) -> Places:
             springs.append((a, b, math.sqrt(max(across, 0.0)), 0.6))
         result = _relaxed(places, springs)
         pairs = touching(result)
-        ends = {i for pair in pairs for i in pair if degree[i] == 1}
-        if not ends or attempt == 2:
+        if not pairs:
             break
+        if not lengthened:
+            lengthened = True
+            if _picture_lengths(mol, places, pairs, length):
+                continue
+        ends = {i for pair in pairs for i in pair if degree[i] == 1}
+        if not ends or shortened == 2:
+            break
+        shortened += 1
         for a, b in bonds:
             if a in ends or b in ends:
                 length[frozenset((a, b))] *= _SHORTER
-    result = _straightened(mol, _rigid_fit(result, places))
+    result = _straightened(mol, _rigid_fit(result, places, keys=keys))
     if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in result.values()):
         return places
-    fitted = _rigid_fit(result, places, turn=False)
-    if max(_distance(fitted[i], places[i]) for i in places) > MAX_TIDY_MOVE * BOND + _turn_room(places):
+    fitted = _rigid_fit(result, places, turn=False, keys=keys)
+    if max(_distance(fitted[i], places[i]) for i in keys) > MAX_TIDY_MOVE * BOND + _turn_room(places):
         return places
     # Two groups that nearly touch in the picture may nearly touch here; what
     # must not happen is a new crossing of bonds or an atom landing on another.
@@ -375,6 +410,37 @@ def tidy(mol: Any, places: Places) -> Places:
     if _atoms_on_each_other(result) and not _atoms_on_each_other(places):
         return places
     return result
+
+
+#: :func:`_picture_lengths` keeps a chain bond at most this long (bond lengths).
+_LONGEST_KEPT = 1.6
+
+
+def _picture_lengths(mol: Any, places: Places, pairs: list[tuple[int, int]],
+                     length: dict[frozenset[int], float]) -> bool:
+    """For every pair of atoms in ``pairs`` (they land on each other once
+    every bond has the same length): the chain bonds on the shortest path
+    between them that the picture draws longer get the picture's length back
+    in ``length`` (at most :data:`_LONGEST_KEPT` bonds). A chemist who drew a
+    long bond there did so to keep the two groups apart. Ring bonds stay
+    regular. True when any length was changed."""
+    from rdkit import Chem
+
+    changed = False
+    for i, j in pairs:
+        try:
+            path = list(Chem.GetShortestPath(mol, i, j))
+        except Exception:  # noqa: BLE001
+            continue
+        for a, b in zip(path, path[1:]):
+            bond = mol.GetBondBetweenAtoms(a, b)
+            if bond is None or bond.IsInRing():
+                continue
+            drawn = min(_distance(places[a], places[b]), _LONGEST_KEPT * BOND)
+            if drawn > length[frozenset((a, b))] + 0.05 * BOND:
+                length[frozenset((a, b))] = drawn
+                changed = True
+    return changed
 
 
 def _relaxed(places: Places, springs: list[tuple[int, int, float, float]]) -> Places:
@@ -416,10 +482,13 @@ def _turn_room(places: Places) -> float:
     return 2 * radius * math.sin(math.radians(MAX_STRAIGHTEN / 2))
 
 
-def _rigid_fit(moved: Places, reference: Places, turn: bool = True) -> Places:
+def _rigid_fit(moved: Places, reference: Places, turn: bool = True,
+               keys: Iterable[int] | None = None) -> Places:
     """``moved`` shifted (and, with ``turn``, rotated) onto ``reference`` in
-    the least-squares sense: undoes any drift of the whole drawing."""
-    keys = list(reference)
+    the least-squares sense: undoes any drift of the whole drawing. Only the
+    atoms ``keys`` (default: all of ``reference``) count for the fit; every
+    atom of ``moved`` is moved."""
+    keys = list(reference) if keys is None else list(keys)
     n = len(keys)
     mx = sum(moved[k][0] for k in keys) / n
     my = sum(moved[k][1] for k in keys) / n
@@ -716,6 +785,34 @@ def _label_score(mol: Any, drawn: Any, mapping: dict[int, int]) -> int:
     return score
 
 
+def _hydrogen_counts(drawn: Any) -> dict[int, int]:
+    """Atom of the drawing -> its number of hydrogens as drawn (from its bond
+    orders, a copy is read without sanitising); {} when that cannot be told."""
+    from rdkit import Chem
+
+    try:
+        work = Chem.Mol(drawn)
+        work.UpdatePropertyCache(strict=False)
+        return {a.GetIdx(): a.GetTotalNumHs() for a in work.GetAtoms() if a.GetAtomicNum() > 1}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _hydrogen_score(mol: Any, drawn_hydrogens: dict[int, int], mapping: dict[int, int]) -> int:
+    """How many atoms of the drawing carry as many hydrogens as the atom of
+    ``mol`` they are matched to. Of two mirror-image matchings of a ring
+    (the tetrazole of losartan) it picks the one with the NH where the
+    picture has it."""
+    score = 0
+    for d, m in mapping.items():
+        if d in drawn_hydrogens:
+            try:
+                score += drawn_hydrogens[d] == mol.GetAtomWithIdx(m).GetTotalNumHs()
+            except Exception:  # noqa: BLE001
+                pass
+    return score
+
+
 def _matchings(mol: Any, drawn: Any) -> list[dict[int, int]]:
     """Ways to lay the drawing onto ``mol``: each ``{atom of drawn: atom of
     mol}``, the most trustworthy first. Explicit hydrogens of the drawing are
@@ -748,8 +845,11 @@ def _matchings(mol: Any, drawn: Any) -> list[dict[int, int]]:
             if key not in seen:
                 seen.add(key)
                 fresh.append(mapping)
-        fresh.sort(key=lambda mapping: -_label_score(mol, drawn, mapping))
+        fresh.sort(key=lambda mapping: (-_label_score(mol, drawn, mapping),
+                                        -_hydrogen_score(mol, drawn_hydrogens, mapping)))
         out.extend(fresh[:_MAX_MATCHES - len(out)])
+
+    drawn_hydrogens = _hydrogen_counts(drawn)
 
     for keep in (heavy, real) if len(real) != len(heavy) else (heavy,):
         if len(keep) < 1 or len(keep) > mol.GetNumAtoms():
@@ -863,10 +963,31 @@ def _write(mol: Any, places: Places) -> str | None:
         for prop in ("_MolFileBondStereo", "_MolFileBondCfg"):
             if bond.HasProp(prop):
                 bond.ClearProp(prop)
+    for atom in work.GetAtoms():
+        if _is_numbered_r_group(atom):
+            # "[1*]" is how MolScribe writes R1. As an R group ("R#" with
+            # "M  RGP") it is drawn "R1" and read back as [1*]; written as an
+            # isotope, OpenChemLib would draw it as a superscript "1" in front
+            # of the label.
+            atom.SetUnsignedProp("_MolFileRLabel", atom.GetIsotope())
     try:
         return Chem.MolToMolBlock(work, forceV3000=False)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _is_numbered_r_group(atom: Any) -> bool:
+    """A placeholder whose isotope is an R-group number (1 to 32, the range of
+    a V2000 "M  RGP" line) and whose label, if it has one, is that R group
+    ("R1" or plain "R")."""
+    if atom.GetAtomicNum() != 0 or not 1 <= atom.GetIsotope() <= 32:
+        return False
+    for prop in ("molFileAlias", "dummyLabel"):
+        if atom.HasProp(prop):
+            label = atom.GetProp(prop).strip().upper()
+            if label not in ("", "*", "R", "R#", f"R{atom.GetIsotope()}"):
+                return False
+    return True
 
 
 def _with_wedges(shown: Any, places: Places, wanted: list[tuple[int, int, int]],
@@ -996,9 +1117,12 @@ def _with_drawn_hydrogens(mol: Any, drawn: Any,
     return shown, extended
 
 
-def _on_the_picture(mol: Any, drawn: Any, picture: Places, mapping: dict[int, int]) -> Places | None:
+def _on_the_picture(mol: Any, drawn: Any, picture: Places, mapping: dict[int, int],
+                    untangle: bool = True) -> Places | None:
     """Every atom of ``mol`` placed: the matched ones where the picture has
-    them, the others (an expanded abbreviation) by RDKit."""
+    them, the others (an expanded abbreviation) by RDKit. None when that
+    cannot be done, or when an added group lands across the rest and
+    (with ``untangle``) no turn of it about its atom helps."""
     from rdkit import Chem
     from rdkit.Chem import rdDepictor
     from rdkit.Geometry import Point2D
@@ -1019,7 +1143,106 @@ def _on_the_picture(mol: Any, drawn: Any, picture: Places, mapping: dict[int, in
             canonOrient=False, clearConfs=True)
     except Exception:  # noqa: BLE001
         return None
-    return _places_of(work)
+    placed = _places_of(work)
+    # RDKit places the rest without looking at the drawing around it: a group
+    # may land across a ring. Turn or mirror it about the atom it hangs on.
+    placed.update({i: scaled[i] for i in scaled})
+    base = clash_score(mol, scaled)
+    if clash_score(mol, placed) <= base:
+        return placed
+    if not untangle:
+        return None
+    placed = _untangled(mol, placed, set(scaled))
+    return placed if clash_score(mol, placed) <= base else None
+
+
+def _untangled(mol: Any, places: Places, fixed: set[int]) -> Places:
+    """``places`` with each group of atoms that are not in ``fixed`` and hang
+    on one atom of ``fixed`` turned about that atom (in steps of 15 degrees,
+    and mirrored) to where it clashes least with the rest; the place RDKit
+    chose wins a tie, then the smallest turn."""
+    out = dict(places)
+    bonds = [(a, b) for a, b in _bond_pairs(mol) if a in places and b in places]
+    free = [i for i in places if i not in fixed]
+    groups: list[set[int]] = []
+    for start in free:
+        if any(start in group for group in groups):
+            continue
+        group, todo = {start}, [start]
+        while todo:
+            for neighbour in mol.GetAtomWithIdx(todo.pop()).GetNeighbors():
+                index = neighbour.GetIdx()
+                if index not in fixed and index not in group:
+                    group.add(index)
+                    todo.append(index)
+        groups.append(group)
+    for group in sorted(groups, key=len, reverse=True):
+        anchors = {n.GetIdx() for i in group for n in mol.GetAtomWithIdx(i).GetNeighbors()
+                   if n.GetIdx() in fixed}
+        if len(anchors) != 1:
+            continue
+        anchor = anchors.pop()
+        ax, ay = out[anchor]
+        first = next(n.GetIdx() for n in mol.GetAtomWithIdx(anchor).GetNeighbors()
+                     if n.GetIdx() in group)
+        axis = math.atan2(out[first][1] - ay, out[first][0] - ax)
+        c2, s2 = math.cos(2 * axis), math.sin(2 * axis)
+        mine = [(a, b) for a, b in bonds if a in group or b in group]
+        others = [(a, b) for a, b in bonds if a not in group and b not in group]
+        rest = [out[j] for j in out if j not in group]
+        best, best_key = None, None
+        for mirrored in (False, True):
+            for step in range(24):
+                turn = math.radians(15.0 * step)
+                cos_t, sin_t = math.cos(turn), math.sin(turn)
+                moved = {}
+                for i in group:
+                    x, y = out[i][0] - ax, out[i][1] - ay
+                    if mirrored:           # reflect across the bond to the anchor
+                        x, y = x * c2 + y * s2, x * s2 - y * c2
+                    moved[i] = (ax + x * cos_t - y * sin_t, ay + x * sin_t + y * cos_t)
+                key = (_group_clash(moved, rest, mine, others, out),
+                       min(step, 24 - step) + (0.5 if mirrored else 0.0))
+                if best_key is None or key < best_key:
+                    best, best_key = moved, key
+        if best is not None:
+            out.update(best)
+    return out
+
+
+def _group_clash(moved: Places, rest: list[tuple[float, float]], mine: list[tuple[int, int]],
+                 others: list[tuple[int, int]], places: Places) -> float:
+    """How badly a group placed at ``moved`` sits among the atoms ``rest``
+    (the part of :func:`clash_score` that changes when the group moves): 1
+    for every atom on top of another, 1 for every bond of the group (the one
+    to it included) that crosses another bond, and a tenth of how far its
+    atoms reach into the room of the others (nearer than one bond)."""
+    limit = CLASH * BOND
+    score = 0.0
+    for p in moved.values():
+        for q in rest:
+            if abs(p[0] - q[0]) < BOND and abs(p[1] - q[1]) < BOND:
+                d = _distance(p, q)
+                if d < limit:
+                    score += 1.0
+                if d < BOND:
+                    score += 0.1 * (BOND - d) / BOND
+
+    def at(i: int) -> tuple[float, float]:
+        return moved[i] if i in moved else places[i]
+
+    for a, b in mine:
+        pa, pb = at(a), at(b)
+        left, right = min(pa[0], pb[0]), max(pa[0], pb[0])
+        low, high = min(pa[1], pb[1]), max(pa[1], pb[1])
+        for c, d in others:
+            pc, pd = places[c], places[d]
+            if max(pc[0], pd[0]) < left or min(pc[0], pd[0]) > right \
+                    or max(pc[1], pd[1]) < low or min(pc[1], pd[1]) > high:
+                continue                  # far apart: they cannot cross
+            if len({a, b, c, d}) == 4 and _cross(pa, pb, pc, pd):
+                score += 1.0
+    return score
 
 
 class _Sub:
@@ -1043,16 +1266,22 @@ def drawing_molfile(mol: Any, drawn: Any = None, box: Sequence[float] | None = N
     from rdkit import rdBase
 
     with rdBase.BlockLogs():
+        hint: Places = {}
         try:
-            answer = _from_the_picture(mol, drawn, box, seen) if drawn is not None else None
+            answer = _from_the_picture(mol, drawn, box, seen, hint) if drawn is not None else None
         except Exception:  # noqa: BLE001 - any trouble: the computed layout
             answer = None
         if answer is not None:
             return answer
+        # The computed layout. Like every molfile written here it is returned
+        # only when it reads back as ``mol``: a drawing that says something
+        # else than the SMILES next to it is worse than no drawing.
         try:
             places = fresh_layout(mol)
+            if places is not None and hint:
+                places = _straightened(mol, _turned_like(mol, places, hint))
             written = _with_wedges(mol, places, []) if places is not None else None
-            if written is not None:
+            if written is not None and written[1]:
                 return written[0]
         except Exception:  # noqa: BLE001
             pass
@@ -1063,26 +1292,62 @@ def drawing_molfile(mol: Any, drawn: Any = None, box: Sequence[float] | None = N
             work = Chem.Mol(mol)
             work.RemoveAllConformers()
             rdDepictor.Compute2DCoords(work)
-            return Chem.MolToMolBlock(work, forceV3000=False)
+            written = _with_wedges(mol, _places_of(work), [])
+            return written[0] if written is not None and written[1] else None
         except Exception:  # noqa: BLE001
             return None
 
 
-def _from_the_picture(mol: Any, drawn: Any, box: Any, seen: Any) -> str | None:
+def _turned_like(mol: Any, places: Places, picture: Places) -> Places:
+    """A computed layout of a molecule in one piece turned (and mirrored when
+    that fits better) so that the atoms of ``picture`` (atom -> its place in
+    the picture) lie as near to where the picture has them as they can: the
+    drawing then at least faces the way the picture does."""
+    from rdkit import Chem
+
+    keys = [i for i in picture if i in places]
+    try:
+        pieces = len(Chem.GetMolFrags(mol))
+    except Exception:  # noqa: BLE001
+        pieces = 0
+    if pieces != 1 or len(keys) < 2:
+        return places
+    target = _scaled(_Sub(mol, set(keys)), {i: picture[i] for i in keys})
+    if target is None:
+        return places
+    best, best_error = places, None
+    for mirrored in (False, True):
+        trial = {i: (-x, y) for i, (x, y) in places.items()} if mirrored else places
+        fitted = _rigid_fit(trial, target, keys=keys)
+        error = sum(_distance(fitted[i], target[i]) ** 2 for i in keys)
+        if best_error is None or error < best_error - 1e-6:
+            best, best_error = fitted, error
+    return best
+
+
+def _from_the_picture(mol: Any, drawn: Any, box: Any, seen: Any,
+                      hint: Places | None = None) -> str | None:
+    """The molfile of ``mol`` on the places of the drawing, or None. ``hint``
+    (filled in when given): the picture's place of every atom of ``mol`` the
+    first matching found, for turning a computed layout the same way."""
     picture = picture_places(drawn, box, seen)
     if picture is None:
         return None
     wedges = _drawn_wedges(drawn)
-    for heavy in _matchings(mol, drawn):
+    for number, heavy in enumerate(_matchings(mol, drawn)):
+        if hint is not None and not hint:
+            hint.update({m: picture[d] for d, m in heavy.items() if d in picture})
         shown, mapping = _with_drawn_hydrogens(mol, drawn, heavy)
-        raw = _on_the_picture(shown, drawn, picture, mapping)
+        # Untangling an added group is tried for the best few matchings only
+        # (the others of a symmetric drawing end the same way; it is slow).
+        raw = _on_the_picture(shown, drawn, picture, mapping, untangle=number < _UNTANGLE_TRIES)
         if raw is None or len(raw) != shown.GetNumAtoms():
             continue
         if _atoms_on_each_other(raw):
             continue                      # no drawing to keep: two atoms on one spot
         shown = _carry_labels(shown, drawn, mapping)
         wanted = [(mapping[a], mapping[b], s) for a, b, s in wedges if a in mapping and b in mapping]
-        neat = tidy(shown, raw)
+        neat = tidy(shown, raw, anchors=set(mapping.values()))
         for places in ((neat, raw) if neat is not raw else (raw,)):
             places = _side_by_side(shown, places, only_touching=True)
             written = _with_wedges(shown, places, wanted, mol)

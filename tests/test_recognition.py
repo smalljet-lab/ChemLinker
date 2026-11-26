@@ -885,6 +885,25 @@ def test_status_when_nothing_is_installed(tmp_path):
     assert recognition.INSTALL_COMMAND in info.value.message
 
 
+def test_the_texts_for_people_call_it_chemrecogniser(tmp_path):
+    """The installer asks "Install ChemResolver?", so every text a person
+    reads uses that name; commands and operations keep "recognition"."""
+    from compound_registry import setup_wizard
+
+    name = recognition.RECOGNISER_NAME
+    assert name == setup_wizard.RECOGNISER_NAME == "ChemResolver"
+    assert recognition.NOT_INSTALLED.startswith(f"{name}, the optional part of ChemLinker")
+    assert recognition.INSTALL_COMMAND == "compound-registry install-recognition"
+    home = install_fake_home(tmp_path / "r")
+    (home / recognition.MARKER_NAME).unlink()
+    assert Recognition(home).status()["detail"].startswith(f"{name} in {home} is not complete: ")
+    r = Recognition(home)
+    for kind in ("start", "load", "loading", "timeout", "died", "model"):
+        text = r._failure_text(WorkerError(kind))
+        assert name in text and "recognition program" not in text and "recognition part" not in text
+    assert name in r._failure_text(WorkerError("load", error="LoadTimeout"))
+
+
 def test_status_of_an_unfinished_installation(tmp_path):
     home = install_fake_home(tmp_path / "r")
     (home / recognition.MARKER_NAME).unlink()

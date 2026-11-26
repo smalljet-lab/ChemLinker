@@ -85,9 +85,9 @@ Then the questions come in this order:
 3. **ELN address.** Press Enter for the default, or type the address of your
    own Sciformation.
 4. **MestReNova add-on.** Asked only when MestReNova was found on the PC.
-5. **ChemRecogniser.** The optional part behind "Capture reaction": it reads a
+5. **ChemResolver.** The optional part behind "Capture reaction": it reads a
    drawn reaction scheme from a picture of the screen. The installer asks
-   `Install ChemRecogniser (about 2.8 GB)?`; the default is no. It needs about
+   `Install ChemResolver (about 2.8 GB)?`; the default is no. It needs about
    2.8 GB on disk, most of it downloaded during the installation, and can be
    added later with `compound-registry install-recognition`. See
    [Capture a reaction from the screen](#capture-a-reaction-from-the-screen-optional).

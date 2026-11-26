@@ -283,8 +283,30 @@ Rules for this part:
   every stereocentre as absolute: without that, OpenChemLib treats the
   molecule as a racemate, and its option that hides the "&1" label also
   hides the wedge.
-- The worker's answer may gain fields (`seen` came later). The host keeps
-  working when one is missing: tests and tools feed it saved answers.
+- The worker's answer may gain fields (`seen` and `source` came later). The
+  host keeps working when one is missing: tests and tools feed it saved
+  answers.
+- Two remedies in the worker recover molecules RxnScribe misses (its
+  docstring; the measurement is `tools/recognition-e2e/missed/DECISION.md`):
+  "peek" re-implements RxnScribe's greedy decoding and reads its tokenizer
+  states, so it depends on the pinned RxnScribe archive: the worker's
+  `RXNSCRIBE_COMMIT` must name the commit of `recognition_requirements.txt`
+  (a test checks it), and the worker switches peek off when the installed
+  RxnScribe's `direct_url.json` names another one. When you change the
+  RxnScribe pin, read its inference loop (`pix2seq/transformer.py`) again,
+  change `RXNSCRIBE_COMMIT`, and run `tests/test_recognition_live.py`,
+  which compares peek's main sequence with `predict_images` on the real
+  models. The check the worker runs on every picture only compares its
+  step-by-step decoding with one full decoder pass; it does not notice a
+  change in RxnScribe's own loop. "Leftover ink" uses OpenCV, numpy and
+  RDKit of the recognition environment and never fails a picture; above
+  `LEFTOVER_MAX_PIXELS` (4 million) it works on a reduced copy. It was
+  measured on dark drawings on a light background only, and its branch
+  "RxnScribe returned boxes but no molecule box" has never been reached by a
+  real picture (only by unit tests). Their unit tests are
+  `tests/test_recognition_remedy.py`; the one that needs OpenCV runs a script
+  under the recognition environment's Python and is skipped when the
+  optional part is not installed.
 - The capture operations skip `chem.normalize` and with it InChI's limit of
   1023 atoms, and RDKit ends the whole process (stack overflow, nothing to
   catch) when it writes the SMILES of a chain of about 3000 atoms. Keep

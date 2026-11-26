@@ -59,7 +59,7 @@ def test_scripts_are_plain_ascii(name):
 def test_the_installer_documents_every_setup_option(name):
     text = text_of(name)
     options = setup_options()
-    assert "--home" in options and "--dry-run" in options and len(options) == 12
+    assert "--home" in options and "--dry-run" in options and len(options) == 13
     for option in options:
         assert re.search(rf"^\s*#?\s*{re.escape(option)}\b", text, re.MULTILINE), option
 

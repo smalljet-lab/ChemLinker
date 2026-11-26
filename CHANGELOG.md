@@ -5,6 +5,63 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The registry
 program and the browser extension are released together under one version
 number.
 
+## [0.12.2] - 2026-11-26
+
+### Fixed
+
+- **Capture reaction: molecules that ChemResolver skipped are now found.**
+  A number printed in front of a molecule, such as the coefficient "1"
+  between the arrow and the product, could make ChemResolver take the number
+  for the molecule's label and skip the molecule itself, so the step showed
+  "Products: None". ChemResolver now checks for such a molecule before it
+  closes the products, and also reads any drawing it left out entirely. A
+  recovered molecule gets its role from where it is drawn relative to the
+  arrow; one that cannot be placed is listed under "Not used in a reaction".
+  On 105 test schemes nothing that was found before is lost and 6 gain
+  their missing product; a scheme like amine + 0.5 glyoxal giving "1" a
+  bis-imine now returns all three molecules with the right roles.
+  Recognition of such a scheme takes a few seconds longer (about 15 s
+  instead of 9 s here).
+- **Capture reaction: very small text at the arrow is read.** Text about
+  10 pixels high in the capture came back empty, so the Conditions box
+  stayed empty. Such text is now read a second time, enlarged. A lone
+  compound number found that way is not put into the conditions.
+- A very large capture no longer makes the recognition slow or
+  memory-hungry: the search for left-out drawings works on a reduced copy
+  above about 4 million pixels.
+
+### Upgrading from 0.12.1
+
+- Run `update.cmd`, then restart the browser so that it starts the new
+  program. ChemResolver does not have to be installed again.
+- The extension did not change: the 0.12.2 `.xpi` only carries the new
+  version number, so installing it is optional.
+
+## [0.12.1] - 2026-11-25
+
+### Fixed
+
+- **Capture reaction: structures are redrawn in the shape of the picture.**
+  A recognised molecule used to get a fresh, often cramped layout. It now
+  keeps the orientation and shape of the drawing you selected, so card and
+  picture can be compared at a glance. A new layout is only made when the
+  drawing cannot be used.
+- **Capture reaction: stereocentres are drawn with their wedge or hash.** The
+  drawing on the card, in the editor and in ChemDraw always says the same as
+  the SMILES next to it.
+- **Capture reaction: the SMILES line is readable.** It wraps inside its box
+  next to the Copy button instead of being cut off.
+- **Capture reaction: a selection around a single structure** in the Reaction
+  mode now gives that molecule instead of "No molecule was found".
+- Smaller drawing fixes: labels such as NH2 no longer overlap a neighbouring
+  label, R groups are shown as R1, R2 without a stray number, groups written
+  out from an abbreviation no longer cross the rest of the molecule.
+- The optional part is now called **ChemResolver** in every text.
+
+### Upgrading from 0.12.0
+
+- Install `chemlinker-0.12.1-firefox.xpi` and restart the browser.
+
 ## [0.12.0] - 2026-11-24
 
 ### Added
@@ -42,7 +99,7 @@ number.
   It is optional and large (about 2.8 GB in
   `%LOCALAPPDATA%\CompoundRegistry\recognition`, about 2.5 GB of memory while
   it runs, no graphics card needed). The installer asks
-  `Install ChemRecogniser (about 2.8 GB)?` (default no; `--recognition yes|no`
+  `Install ChemResolver (about 2.8 GB)?` (default no; `--recognition yes|no`
   answers in advance, `--yes` never installs it, an update refreshes an
   existing one). The
   internet is needed for this command only; the model files are checked

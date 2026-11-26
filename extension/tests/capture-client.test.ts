@@ -149,6 +149,11 @@ describe("texts", () => {
     expect(statusText({ installed: true, state: "loading", load_seconds: 12.4 }).text).toContain("(12 s so far)");
     expect(statusText({ installed: true, state: "stopped" }).kind).toBe("info");
     expect(statusText({ installed: true, state: "ready" }).kind).toBe("ok");
+    // The user knows it by the name the installer asked with.
+    expect(missing.text).toMatch(/^ChemResolver is not installed on this PC\./);
+    expect(statusText({ installed: true, state: "ready" }).text).toBe("ChemResolver is ready.");
+    expect(statusText({ installed: true, state: "loading" }).text).toMatch(/^ChemResolver is loading its models\./);
+    expect(statusText({ installed: true, state: "failed" }).text).toBe("ChemResolver could not be started.");
     const failed = statusText({ installed: true, state: "failed", detail: "The worker ended with exit code 1." });
     expect(failed.kind).toBe("error");
     expect(failed.text).toContain("exit code 1");
@@ -157,15 +162,16 @@ describe("texts", () => {
   it("puts errors into words for this page", () => {
     expect(errorSentence({ code: "unknown_op", message: "Unknown operation 'recognize'." })).toContain("Update the program");
     expect(errorSentence({ code: "recognition_not_installed", message: "x" })).toContain(INSTALL_COMMAND);
+    expect(errorSentence({ code: "recognition_not_installed", message: "x" })).toMatch(/^ChemResolver is not installed/);
     expect(errorSentence({ code: "recognition_not_installed", message: "Type: .venv\Scripts\compound-registry.exe install-recognition" })).toBe(
       "Type: .venv\Scripts\compound-registry.exe install-recognition",
     );
     const timeout = { code: "host_timeout", message: "No answer within 300 seconds." };
-    expect(errorSentence(timeout, "recognize")).toBe("No answer within 300 seconds. The recognition took too long. Try a smaller selection.");
+    expect(errorSentence(timeout, "recognize")).toBe("No answer within 300 seconds. ChemResolver took too long. Try a smaller selection.");
     // Only a recognition has a selection to make smaller.
     for (const op of ["recognition_status", "describe_structures", "reaction_to_chemdraw", undefined] as const) {
       expect(errorSentence(timeout, op)).not.toContain("selection");
-      expect(errorSentence(timeout, op)).not.toContain("recognition took too long");
+      expect(errorSentence(timeout, op)).not.toContain("took too long");
       expect(errorSentence(timeout, op)).toContain("No answer within 300 seconds. The program may be busy");
     }
     expect(errorSentence({ code: "image_invalid", message: "The picture is not a PNG." })).toBe("The picture is not a PNG.");

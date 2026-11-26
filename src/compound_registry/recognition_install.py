@@ -288,7 +288,7 @@ def _finish(model: ModelFile, part: Path, target: Path, digest: str, source: str
         _remove(part)
         raise _fail(f"{model.name} from {source} is not the expected file (its SHA-256 checksum "
                     "differs). Nothing was kept. Run the command again; if it happens again the "
-                    "file has changed at its source, and the recognition part cannot be "
+                    "file has changed at its source, and ChemResolver cannot be "
                     "installed until ChemLinker is updated.")
     os.replace(part, target)
 
@@ -430,7 +430,7 @@ def install(home: Path | None = None, *, models_from: Path | None = None,
                     "found. Run the ChemLinker installer again (it offers to install uv), "
                     "open a new terminal and repeat this command.")
 
-    say(f"Installing the recognition part into {home}")
+    say(f"Installing ChemResolver into {home}")
     say("(about 2.8 GB; the internet is needed now, never afterwards)")
     try:
         home.mkdir(parents=True, exist_ok=True)
@@ -503,7 +503,7 @@ def install(home: Path | None = None, *, models_from: Path | None = None,
 
     marker = _write_marker(home)
     say("")
-    say("The recognition part is installed. Restart the browser (or reload the extension), "
+    say("ChemResolver is installed. Restart the browser (or reload the extension), "
         "then use 'Capture reaction' from the ChemLinker button.")
     return {"installed": True, "home": str(home), "models": fetched, "marker": marker}
 
@@ -513,7 +513,7 @@ def _remove_tree(folder: Path) -> None:
         shutil.rmtree(folder)
     except OSError as exc:
         raise _fail(f"{folder} could not be removed completely ({exc.strerror or exc}). "
-                    "Close the browser (the recognition may still be running) and run "
+                    "Close the browser (ChemResolver may still be running) and run "
                     "the command again.") from None
 
 
@@ -597,6 +597,6 @@ def uninstall(home: Path | None = None, *, tools: Tools | None = None) -> dict[s
         removed.append(str(home))
     except OSError:
         pass                                       # something else is in it; it stays
-    tools.say("The recognition part was removed." if removed
+    tools.say("ChemResolver was removed." if removed
               else f"Nothing to remove in {home}.")
     return {"installed": False, "home": str(home), "removed": removed, "kept": kept}
